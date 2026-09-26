@@ -1,0 +1,192 @@
+{
+	"format_version": "1.8.0",
+	"animations": {
+		"idle": {
+			"loop": true,
+			"animation_length": 2,
+			"bones": {
+				"main": {
+					"position": {
+						"0.0": {
+							"vector": [0, -1, 0]
+						},
+						"1.0": {
+							"vector": [0, 0, 0],
+							"easing": "easeInOutQuad"
+						},
+						"2.0": {
+							"vector": [0, -1, 0],
+							"easing": "easeInOutQuad"
+						}
+					}
+				}
+			}
+		},
+		"Weapon_on": {
+			"loop": "hold_on_last_frame",
+			"animation_length": 1,
+			"bones": {
+				"main": {
+					"position": {
+						"0.0": {
+							"vector": [0, -1, 0]
+						},
+						"0.5": {
+							"vector": [0, 0, 0],
+							"easing": "easeInOutQuad"
+						},
+						"1.0": {
+							"vector": [0, -1, 0],
+							"easing": "easeInOutQuad"
+						}
+					}
+				},
+				"Shell": {
+					"position": {
+						"0.0": {
+							"vector": [0, 0, 0]
+						},
+						"0.5": {
+							"vector": [0, 4, 0],
+							"easing": "easeOutQuad"
+						}
+					}
+				},
+				"door_R_Y": {
+					"rotation": {
+						"0.0": {
+							"vector": [0, 0, 0]
+						},
+						"0.25": {
+							"vector": [0, 90, 0],
+							"easing": "easeOutQuad"
+						},
+						"0.75": {
+							"vector": [0, 90, 0],
+							"easing": "easeOutQuad"
+						},
+						"1.0": {
+							"vector": [0, 0, 0],
+							"easing": "easeOutQuad"
+						}
+					}
+				},
+				"Weapon_R_X": {
+					"rotation": {
+						"0.25": {
+							"vector": [0, 0, 0]
+						},
+						"0.75": {
+							"vector": [90, 0, 0],
+							"easing": "easeOutQuad"
+						}
+					}
+				}
+			}
+		},
+		"Weapon_on_idle": {
+			"loop": true,
+			"animation_length": 1,
+			"bones": {
+				"main": {
+					"position": {
+						"0.0": {
+							"vector": [0, -1, 0]
+						},
+						"0.5": {
+							"vector": [0, 0, 0],
+							"easing": "easeInOutQuad"
+						},
+						"1.0": {
+							"vector": [0, -1, 0],
+							"easing": "easeInOutQuad"
+						}
+					}
+				},
+				"Shell": {
+					"position": {
+						"0.0": {
+							"vector": [0, 4, 0]
+						},
+						"0.5": {
+							"vector": [0, 4, 0]
+						}
+					}
+				},
+				"Weapon_R_X": {
+					"rotation": {
+						"0.0": {
+							"vector": [90, 0, 0]
+						},
+						"0.5": {
+							"vector": [90, 0, 0]
+						}
+					}
+				}
+			}
+		},
+		"Weapon_off": {
+			"loop": "hold_on_last_frame",
+			"animation_length": 1,
+			"bones": {
+				"Shell": {
+					"position": {
+						"0.5": {
+							"vector": [0, 4, 0]
+						},
+						"1.0": {
+							"vector": [0, 0, 0],
+							"easing": "easeOutQuad"
+						}
+					}
+				},
+				"Weapon_R_X": {
+					"rotation": {
+						"0.25": {
+							"vector": [90, 0, 0]
+						},
+						"0.75": {
+							"vector": [0, 0, 0],
+							"easing": "easeOutQuad"
+						}
+					}
+				},
+				"main": {
+					"position": {
+						"0.0": {
+							"vector": [0, -1, 0]
+						},
+						"0.5": {
+							"vector": [0, 0, 0],
+							"easing": "easeInOutQuad"
+						},
+						"1.0": {
+							"vector": [0, -1, 0],
+							"easing": "easeInOutQuad"
+						}
+					}
+				},
+				"door_R_Y": {
+					"rotation": {
+						"0.0": {
+							"vector": [0, 0, 0]
+						},
+						"0.25": {
+							"vector": [0, 90, 0],
+							"easing": "easeOutQuad"
+						},
+						"0.75": {
+							"vector": [0, 90, 0],
+							"easing": "easeOutQuad"
+						},
+						"1.0": {
+							"vector": [0, 0, 0],
+							"easing": "easeOutQuad"
+						}
+					}
+				}
+			}
+		}
+	},
+	"geckolib_format_version": 2
+}

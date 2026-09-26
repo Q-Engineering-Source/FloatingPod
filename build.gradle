@@ -1,0 +1,328 @@
+plugins {
+    id 'java'
+    id 'java-library'
+    id 'scala'
+    id 'maven-publish'
+    id 'com.gradleup.shadow' version '9.5.1'
+    id 'org.jetbrains.gradle.plugin.idea-ext' version '1.4.1'
+    id 'xyz.wagyourtail.unimined' version '1.4.27-kappa'
+    id 'net.kyori.blossom' version '2.2.0'
+}
+
+import groovy.json.JsonSlurper
+import org.jetbrains.gradle.ext.Gradle
+import java.util.zip.ZipFile
+
+ext {
+    //noinspection GroovyAssignabilityCheck
+    access_transformer_locations = "${mod_id}_at.cfg"
+}
+
+version = mod_version
+group = root_package
+
+base {
+    archivesName = mod_id
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+    if (generate_sources_jar.toBoolean()) {
+        withSourcesJar()
+    }
+    if (generate_javadocs_jar.toBoolean()) {
+        withJavadocJar()
+    }
+}
+
+scala {
+    scalaVersion = scala_version
+}
+
+configurations {
+    contain
+    implementation.extendsFrom(contain)
+    modCompileOnly
+    compileOnly.extendsFrom(modCompileOnly)
+    modRuntimeOnly
+    runtimeOnly.extendsFrom(modRuntimeOnly)
+    cclMcpMappings
+}
+
+def remapTaskName = enable_shadow.toBoolean() ? "remapShadowJar" : "remapJar"
+
+//noinspection GroovyAssignabilityCheck
+unimined.minecraft {
+    version "1.12.2"
+
+    mappings {
+        mcp("stable", "39-1.12")
+    }
+
+    cleanroom {
+        if (use_access_transformer.toBoolean()) {
+            accessTransformer "${rootProject.projectDir}/src/main/resources/$access_transformer_locations"
+        }
+        loader "0.6.8-alpha"
+        runs.all {
+            args += ['--username', minecraft_username]
+            systemProperty('crl.dev.mixin', 'mixins.floatingpod.json')
+            systemProperty('net.minecraftforge.gradle.GradleStart.srg.notch-srg', file('.gradle/unimined/local/mappings/srg2mcp.tsrg'))
+            systemProperty('net.minecraftforge.gradle.GradleStart.csvDir', layout.buildDirectory.dir('ccl-mcp-csv').get().asFile)
+            def extraArgs = extra_jvm_args
+            if (extraArgs != null && !extraArgs.trim().isEmpty()) {
+                jvmArgs += extraArgs.split(/\s+/).toList()
+            }
+            if (enable_foundation_debug.toBoolean()) {
+                systemProperty("foundation.dump", "true")
+                systemProperty("foundation.verbose", "true")
+            }
+            if (is_coremod.toBoolean()) {
+                systemProperty("fml.coreMods.load", coremod_plugin_class_name)
+            }
+        }
+        runs.config('server') {
+            jvmArgs = jvmArgs.collect { String argument ->
+                if (!argument.startsWith('-Dcrl.dev.extrapath=')) {
+                    return argument
+                }
+                def serverPaths = argument.substring('-Dcrl.dev.extrapath='.length()).tokenize(File.pathSeparator).findAll { String path ->
+                    String fileName = new File(path).name.toLowerCase()
+                    !fileName.startsWith('ctm-vintage-') && !fileName.startsWith('codechickenlib-')
+                }
+                "-Dcrl.dev.extrapath=${serverPaths.join(File.pathSeparator)}"
+            }
+        }
+    }
+    defaultRemapJar = false
+
+    String jarTaskName = enable_shadow.toBoolean() ? "shadowJar" : "jar"
+
+    remap(tasks.named(jarTaskName).get()) {
+        mixinRemap {
+            enableBaseMixin()
+            disableRefmap()
+        }
+    }
+
+    mods {
+        remap(configurations.modCompileOnly)
+        // 将 modRuntimeOnly 中的外部模组发行 JAR 重映射后提供给开发运行配置。
+        remap(configurations.modRuntimeOnly)
+    }
+}
+
+tasks.named('runClient').configure {
+    dependsOn tasks.named('prepareCclMcpMappings')
+    // CleanMix 在处理 crl.dev.mixin 时尚未扫描 crl.dev.extrapath，须先让配置资源对启动类加载器可见。
+    classpath += files(sourceSets.main.output.resourcesDir)
+    doFirst {
+        def manualCtmJars = fileTree('run/client/mods') {
+            include '**/*.jar'
+        }.files.findAll { File jarFile ->
+            ZipFile zipFile = new ZipFile(jarFile)
+            try {
+                def metadataEntry = zipFile.getEntry('mcmod.info')
+                if (metadataEntry == null) {
+                    return false
+                }
+                def metadata = zipFile.getInputStream(metadataEntry).withCloseable { input ->
+                    new JsonSlurper().parse(input)
+                }
+                return metadata instanceof Collection && metadata.any { mod -> mod instanceof Map && mod.modid == 'ctm' }
+            } finally {
+                zipFile.close()
+            }
+        }
+        if (!manualCtmJars.isEmpty()) {
+            throw new GradleException("CTM is managed through modRuntimeOnly and Unimined remapping; remove raw CTM JARs before running: ${manualCtmJars*.absolutePath.join(', ')}")
+        }
+    }
+}
+
+tasks.register('prepareCclMcpMappings', Sync) {
+    from { zipTree(configurations.cclMcpMappings.singleFile) }
+    include 'fields.csv', 'methods.csv'
+    into layout.buildDirectory.dir('ccl-mcp-csv')
+}
+
+dependencies {
+    cclMcpMappings 'de.oceanlabs.mcp:mcp_stable:39-1.12@zip'
+    compileOnly 'com.cleanroommc:sponge-mixin:0.20.12+mixin.0.8.7'
+    if (use_asset_mover.toBoolean()) {
+        implementation "com.cleanroommc:assetmover:${asset_mover_version}"
+    }
+    if (enable_junit_testing.toBoolean()) {
+        testImplementation 'org.junit.jupiter:junit-jupiter:6.0.3'
+        testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+        // SQLite JDBC 仅用于 Stage 2 存储行为测试；运行时由独立前置模组提供，绝不进入主产物。
+        testImplementation 'org.xerial:sqlite-jdbc:3.46.0.0'
+        // 已嵌入 Java 源码在测试中直接依赖 main 的 compileOnly API；测试运行时必须使用同一开发 classpath。
+        // 该依赖只属于 test source set，不会被 jar 或 remapJar 打包。
+        testImplementation files(sourceSets.main.compileClasspath)
+    }
+}
+
+apply from: 'gradle/scripts/dependencies.gradle'
+
+def resourceProperties = [
+        mod_id     : mod_id,
+        mod_name   : mod_name,
+        mod_version: mod_version
+]
+
+processResources {
+    inputs.properties(resourceProperties)
+    filesMatching('mcmod.info') {
+        expand(resourceProperties)
+    }
+    rename '(.+_at.cfg)', 'META-INF/$1'
+}
+
+sourceSets {
+    main {
+        blossom {
+            javaSources {
+                property('mod_id', mod_id)
+                property('mod_name', mod_name)
+                property('mod_version', mod_version)
+                property('package', "${root_package}.${mod_id}")
+            }
+            resources {
+                property('mod_id', mod_id)
+                property('mod_name', mod_name)
+                property('mod_version', mod_version)
+                property('mod_description', mod_description)
+                property('mod_authors', mod_authors.toString().split(',').findAll { !it.isBlank() }.collect { "\"${it.strip()}\"" }.join(', '))
+                property('mod_credits', mod_credits)
+                property('mod_url', mod_url)
+                property('mod_update_json', mod_update_json)
+                property('mod_logo_path', mod_logo_path)
+            }
+        }
+    }
+}
+
+idea {
+    module {
+        inheritOutputDirs = true
+    }
+    project {
+        settings {
+            runConfigurations {
+                '1. Build'(Gradle) {
+                    taskNames = ["build"]
+                }
+                '2. Run Client'(Gradle) {
+                    taskNames = ["runClient"]
+                }
+                '3. Run Server'(Gradle) {
+                    taskNames = ["runServer"]
+                }
+            }
+            compiler.javac {
+                afterEvaluate {
+                    javacAdditionalOptions = '-encoding utf8'
+                    moduleJavacAdditionalOptions = [
+                            (project.name + '.main'): tasks.compileJava.options.compilerArgs.collect { "\"${it}\"" }.join(' ')
+                    ]
+                }
+            }
+            taskTriggers {
+                afterSync tasks.named("genSources")
+            }
+        }
+    }
+}
+
+if (!enable_shadow.toBoolean()) {
+    shadowJar.enabled = false
+}
+
+compileJava {
+    sourceCompatibility = targetCompatibility = JavaVersion.VERSION_25
+}
+
+jar {
+    archiveClassifier = 'dev'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    if (configurations.contain.size() > 0) {
+        into('/') {
+            from configurations.contain
+        }
+    }
+    doFirst {
+        manifest {
+            def attributeMap = [:]
+            attributeMap['ModType'] = "CRL"
+            attributeMap['MixinConfigs'] = 'mixins.floatingpod.json'
+            if (configurations.contain.size() > 0) {
+                attributeMap['ContainedDeps'] = configurations.contain.collect { it.name }.join(' ')
+                attributeMap['NonModDeps'] = true
+            }
+            if (is_coremod.toBoolean()) {
+                attributeMap['FMLCorePlugin'] = coremod_plugin_class_name
+                if (coremod_includes_mod.toBoolean()) {
+                    attributeMap['FMLCorePluginContainsFMLMod'] = true
+                }
+            }
+            if (use_access_transformer.toBoolean()) {
+                attributeMap['FMLAT'] = access_transformer_locations
+            }
+            attributes(attributeMap)
+        }
+    }
+    finalizedBy(tasks.named(remapTaskName).get())
+}
+
+shadowJar {
+    //noinspection GroovyAssignabilityCheck,GroovyAccessibility
+    configurations = [project.configurations.shadow]
+    archiveClassifier = "shadow"
+}
+
+tasks.named(remapTaskName).configure {
+    doFirst {
+        logging.captureStandardOutput LogLevel.INFO
+    }
+    doLast {
+        logging.captureStandardOutput LogLevel.QUIET
+    }
+}
+
+compileTestJava {
+    sourceCompatibility = targetCompatibility = JavaVersion.VERSION_25
+}
+
+test {
+    useJUnitPlatform()
+    javaLauncher.set(javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(25)
+    })
+    if (show_testing_output.toBoolean()) {
+        testLogging {
+            showStandardStreams = true
+        }
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+tasks.withType(ScalaCompile).configureEach {
+    scalaCompileOptions.additionalParameters = (scalaCompileOptions.additionalParameters ?: []) + ['-sourceroot', project.projectDir.toString()]
+}
+
+// 显式声明归档可重现性开关。Gradle 9.6.1 的 AbstractArchiveTask 已把这两项的
+// convention 设为同样的值，故本段不改变产物内容；但该默认值是 Gradle 9.0.0 引入且
+// 与官方文档不一致（gradle/gradle#34643），显式声明可防止未来版本静默改回。
+tasks.withType(AbstractArchiveTask).configureEach {
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+}
+
+apply from: 'gradle/scripts/publishing.gradle'
+apply from: 'gradle/scripts/extra.gradle'

@@ -1,0 +1,12 @@
+// 直接运行 Stage 1-B 探针，确保 Java 25 能调用 Scala 3 的已编译实现。
+tasks.register('verifyScalaJavaInterop', JavaExec) {
+    group = 'verification'
+    description = '直接执行 Scala 3 与 Java 25 的互操作探针。'
+    dependsOn tasks.named('classes')
+    classpath = sourceSets.main.runtimeClasspath + sourceSets.main.compileClasspath
+    mainClass.set("${root_package}.FloatingPod")
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('verifyScalaJavaInterop')
+}

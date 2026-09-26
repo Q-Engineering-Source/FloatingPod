@@ -1,0 +1,23 @@
+# 全部文本文件在仓库和工作树中统一使用 LF，覆盖本地 core.autocrlf 设置。
+* text eol=lf
+
+# 显式 text 会关闭 Git 的二进制自动探测，因此二进制类型必须单独标记为 -text，
+# 否则提交时的 CRLF 规范化会剥离其中的 0x0D 字节并损坏文件。
+*.png   -text
+*.jpg   -text
+*.jpeg  -text
+*.gif   -text
+*.ico   -text
+*.ogg   -text
+*.wav   -text
+*.ttf   -text
+*.otf   -text
+*.jar   -text
+*.zip   -text
+*.gz    -text
+*.class -text
+*.dll   -text
+*.so    -text
+
+# vendored 源码保留上游行尾空白；差异检查不得把位元组保真内容误报为本地格式问题。
+src/main/scala/com/wi/floatingpod/vendored/** whitespace=-blank-at-eol

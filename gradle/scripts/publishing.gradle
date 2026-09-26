@@ -1,0 +1,18 @@
+if (publish_to_maven.toBoolean()) {
+    publishing {
+        repositories {
+            maven {
+                name = maven_name.replaceAll("\\s", "")
+                url = maven_url
+                credentials(PasswordCredentials)
+            }
+        }
+        publications {
+            mavenJava(MavenPublication) {
+                from components.java
+                setGroupId(root_package)
+                setArtifactId(mod_id)
+            }
+        }
+    }
+}

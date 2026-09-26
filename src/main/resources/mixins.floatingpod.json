@@ -1,0 +1,14 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.wi.floatingpod.mixin",
+  "target": "@env(DEFAULT)",
+  "compatibilityLevel": "JAVA_25",
+  "priority": 999,
+  "client": [
+    "MixinEntityRenderer"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

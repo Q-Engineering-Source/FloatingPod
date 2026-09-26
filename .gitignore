@@ -1,0 +1,47 @@
+.gradle
+**/build/
+!src/**/build/
+run/
+out/
+
+# 仓库根构建与探针运行产生的日志目录，仅匹配根目录下的 logs/，不匹配其他深度的同名目录
+/logs/
+
+# JVM crash artifacts may contain local paths and memory contents.
+/hs_err_pid*.log
+/hs_err_pid*.mdmp
+
+# Ignore Gradle GUI config
+gradle-app.setting
+
+# Avoid ignoring Gradle wrapper jar file (.jar files are usually ignored)
+!gradle-wrapper.jar
+
+# Avoid ignoring Gradle wrapper properties
+!gradle-wrapper.properties
+
+# Cache of project
+.gradletasknamecache
+
+# Eclipse Gradle plugin generated files
+# Eclipse Core
+.project
+# JDT-specific (Eclipse Java Development Tools)
+.classpath
+# Eclipse / VSCode Java 语言服务器的增量编译输出，仅匹配仓库根目录下的 bin/
+/bin/
+
+# IDEA config
+.idea
+
+# VSCode config
+.vscode/
+
+# Codex 宿主的本机配置，内含指向 localhost 的 MCP 端点，非仓库规范内容
+.codex/
+
+# Codex 宿主的线路自述报告目录，由 L0-n2 会话自行写入，不纳入版本控制以避免污染主工作树的 git status 与 git diff
+Memory/codex/
+
+# IDE 自动生成的工作区设定，非仓库规范内容
+*.code-workspace
