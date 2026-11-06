@@ -90,7 +90,7 @@ unimined.minecraft {
                 }
                 def serverPaths = argument.substring('-Dcrl.dev.extrapath='.length()).tokenize(File.pathSeparator).findAll { String path ->
                     String fileName = new File(path).name.toLowerCase()
-                    !fileName.startsWith('ctm-vintage-') && !fileName.startsWith('codechickenlib-')
+                    !fileName.startsWith('neo-continuity-vintage-') && !fileName.startsWith('ctm-vintage-') && !fileName.startsWith('codechickenlib-')
                 }
                 "-Dcrl.dev.extrapath=${serverPaths.join(File.pathSeparator)}"
             }
@@ -103,6 +103,8 @@ unimined.minecraft {
     remap(tasks.named(jarTaskName).get()) {
         mixinRemap {
             enableBaseMixin()
+            // WrapMethod 等 MixinExtras selector 也必须从 MCP 映射到发行环境的 SRG。
+            enableMixinExtra()
             disableRefmap()
         }
     }
@@ -119,7 +121,7 @@ tasks.named('runClient').configure {
     // CleanMix 在处理 crl.dev.mixin 时尚未扫描 crl.dev.extrapath，须先让配置资源对启动类加载器可见。
     classpath += files(sourceSets.main.output.resourcesDir)
     doFirst {
-        def manualCtmJars = fileTree('run/client/mods') {
+        def manualConnectedTextureJars = fileTree('run/client/mods') {
             include '**/*.jar'
         }.files.findAll { File jarFile ->
             ZipFile zipFile = new ZipFile(jarFile)
@@ -131,13 +133,13 @@ tasks.named('runClient').configure {
                 def metadata = zipFile.getInputStream(metadataEntry).withCloseable { input ->
                     new JsonSlurper().parse(input)
                 }
-                return metadata instanceof Collection && metadata.any { mod -> mod instanceof Map && mod.modid == 'ctm' }
+                return metadata instanceof Collection && metadata.any { mod -> mod instanceof Map && mod.modid in ['ctm', 'continuity'] }
             } finally {
                 zipFile.close()
             }
         }
-        if (!manualCtmJars.isEmpty()) {
-            throw new GradleException("CTM is managed through modRuntimeOnly and Unimined remapping; remove raw CTM JARs before running: ${manualCtmJars*.absolutePath.join(', ')}")
+        if (!manualConnectedTextureJars.isEmpty()) {
+            throw new GradleException("NeoContinuity is managed through modRuntimeOnly and Unimined remapping; remove raw continuity or superseded CTM JARs before running: ${manualConnectedTextureJars*.absolutePath.join(', ')}")
         }
     }
 }
@@ -157,8 +159,8 @@ dependencies {
     if (enable_junit_testing.toBoolean()) {
         testImplementation 'org.junit.jupiter:junit-jupiter:6.0.3'
         testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-        // SQLite JDBC 仅用于 Stage 2 存储行为测试；运行时由独立前置模组提供，绝不进入主产物。
-        testImplementation 'org.xerial:sqlite-jdbc:3.46.0.0'
+        // JDBC API 与测试驱动由 dependencies.gradle 核验同一前置产物后装配。
+        // SQLite 行为测试仅保留为旧数据迁移参考，不是正式 MySQL runtime 验收。
         // 已嵌入 Java 源码在测试中直接依赖 main 的 compileOnly API；测试运行时必须使用同一开发 classpath。
         // 该依赖只属于 test source set，不会被 jar 或 remapJar 打包。
         testImplementation files(sourceSets.main.compileClasspath)

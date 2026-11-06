@@ -37,12 +37,14 @@ final class PersistenceManager(manager: ActiveFloatingPodManager, flushService: 
    * @return 活动辅助机回收的原始结果。
    */
   def stopWithReport(event: FMLServerStoppingEvent): PersistenceStoppingReport =
+    manager.stopPeriodicFlushRequests()
     val flushStopFailure = flushService.stop().failed.toOption
     flushStopFailure.foreach(problem => logger.warn(s"Failed to stop periodic flush service: ${problem.getMessage}", problem))
     val managerReport = manager.shutdownWithReport()
-    if managerReport.isClean then logger.info(s"Graceful shutdown completed, ${managerReport.recalledUuids.size} pods recalled")
+    val report = PersistenceStoppingReport(flushStopFailure, managerReport, flushService.terminationPending)
+    if report.isClean then logger.info(s"Graceful shutdown completed, ${managerReport.recalledUuids.size} pods recalled")
     else logger.error("Graceful shutdown completed with unresolved FloatingPod resources")
-    PersistenceStoppingReport(flushStopFailure, managerReport)
+    report
 
   /** 启动中止只停止后台刷盘；不得把尚未成功启动的 runtime 误当正常停服而召回辅助机。 */
   def abortStarted(): Unit = flushService.stop().get
@@ -51,7 +53,8 @@ final class PersistenceManager(manager: ActiveFloatingPodManager, flushService: 
   def onServerStopping(event: FMLServerStoppingEvent): Try[Int] = Try(stopWithReport(event).managerReport.recalledUuids.size)
 
 /** 持久化阶段的结构化停服结果。 */
-final case class PersistenceStoppingReport(flushStopFailure: Option[Throwable], managerReport: ManagerShutdownReport):
+final case class PersistenceStoppingReport(flushStopFailure: Option[Throwable], managerReport: ManagerShutdownReport,
+    schedulerTerminationPending: Boolean = false):
   require(flushStopFailure != null, "flushStopFailure must not be null")
   require(managerReport != null, "managerReport must not be null")
-  def isClean: Boolean = flushStopFailure.isEmpty && managerReport.isClean
+  def isClean: Boolean = flushStopFailure.isEmpty && managerReport.isClean && !schedulerTerminationPending

@@ -1,0 +1,465 @@
+{
+  "sourceReceiptSha256": "1ed57da01db70c6e0b3b1679dbcc81bfdcd4798bb02f994bba8f7150fc794cf3",
+  "rows": [
+    {
+      "constraintName": "ck_f3_01_01",
+      "checkClause": "(`singleton_fixed1` = 1)"
+    },
+    {
+      "constraintName": "ck_f3_01_02",
+      "checkClause": "(`backend` = _utf8mb4\\'MYSQL\\')"
+    },
+    {
+      "constraintName": "ck_f3_01_03",
+      "checkClause": "(`format_version` = 6)"
+    },
+    {
+      "constraintName": "ck_f3_01_04",
+      "checkClause": "(`bootstrap_state` in (_utf8mb4\\'BOOTSTRAPPING\\',_utf8mb4\\'READY\\'))"
+    },
+    {
+      "constraintName": "ck_f3_01_05",
+      "checkClause": "(`import_state` in (_utf8mb4\\'NONE\\',_utf8mb4\\'PENDING\\',_utf8mb4\\'COMMITTED\\'))"
+    },
+    {
+      "constraintName": "ck_f3_01_06",
+      "checkClause": "(`source_provenance_kind` in (_utf8mb4\\'FRESH_PLAN\\',_utf8mb4\\'FORMAT3_RESTORE\\',_utf8mb4\\'FORMAT2_IMPORT\\',_utf8mb4\\'SQLITE_IMPORT\\',_utf8mb4\\'MANAGED_INSTALL\\'))"
+    },
+    {
+      "constraintName": "ck_f3_01_07",
+      "checkClause": "(`limit_profile_encoding` = _utf8mb4\\'FP_SOURCE_LIMIT_PROFILE_BE_V1\\')"
+    },
+    {
+      "constraintName": "ck_f3_01_08",
+      "checkClause": "(((`import_state` = _utf8mb4\\'NONE\\') and (`import_manifest_sha256` is null) and (`import_operation_uuid` is null) and (`import_snapshot_sha256` is null) and (`import_receipt_sha256` is null)) or ((`import_state` = _utf8mb4\\'PENDING\\') and (`import_manifest_sha256` is not null) and (`import_operation_uuid` is not null) and (`import_snapshot_sha256` is not null) and (`import_receipt_sha256` is null)) or ((`import_state` = _utf8mb4\\'COMMITTED\\') and (`import_manifest_sha256` is not null) and (`import_operation_uuid` is not null) and (`import_snapshot_sha256` is not null) and (`import_receipt_sha256` is not null)))"
+    },
+    {
+      "constraintName": "ck_f3_01_09",
+      "checkClause": "((`bootstrap_state` <> _utf8mb4\\'READY\\') or ((`guard_manifest_sha256` is not null) and (`import_state` in (_utf8mb4\\'NONE\\',_utf8mb4\\'COMMITTED\\'))))"
+    },
+    {
+      "constraintName": "ck_f3_01_10",
+      "checkClause": "(`max_region_bytes` > 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_11",
+      "checkClause": "(`max_chunk_bytes` > 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_12",
+      "checkClause": "(`max_decompressed_bytes` > 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_13",
+      "checkClause": "(`max_nbt_depth` > 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_14",
+      "checkClause": "(`max_members` > 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_15",
+      "checkClause": "(`max_retained_bytes` > 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_16",
+      "checkClause": "(`max_sql_packet_bytes` > 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_17",
+      "checkClause": "(`max_native_artifact_bytes` > 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_18",
+      "checkClause": "(length(`ddl_sha256`) = 32)"
+    },
+    {
+      "constraintName": "ck_f3_01_19",
+      "checkClause": "((length(`provisioning_uuid`) = 16) and (`provisioning_uuid` <> unhex(repeat(_utf8mb4\\'00\\',16))))"
+    },
+    {
+      "constraintName": "ck_f3_01_20",
+      "checkClause": "((length(`expected_server_uuid`) = 16) and (`expected_server_uuid` <> unhex(repeat(_utf8mb4\\'00\\',16))))"
+    },
+    {
+      "constraintName": "ck_f3_01_21",
+      "checkClause": "((length(`expected_binding_uuid`) = 16) and (`expected_binding_uuid` <> unhex(repeat(_utf8mb4\\'00\\',16))))"
+    },
+    {
+      "constraintName": "ck_f3_01_22",
+      "checkClause": "((`import_manifest_sha256` is null) or (length(`import_manifest_sha256`) = 32))"
+    },
+    {
+      "constraintName": "ck_f3_01_23",
+      "checkClause": "((`import_operation_uuid` is null) or ((length(`import_operation_uuid`) = 16) and (`import_operation_uuid` <> unhex(repeat(_utf8mb4\\'00\\',16)))))"
+    },
+    {
+      "constraintName": "ck_f3_01_24",
+      "checkClause": "((`import_snapshot_sha256` is null) or (length(`import_snapshot_sha256`) = 32))"
+    },
+    {
+      "constraintName": "ck_f3_01_25",
+      "checkClause": "((`import_receipt_sha256` is null) or (length(`import_receipt_sha256`) = 32))"
+    },
+    {
+      "constraintName": "ck_f3_01_26",
+      "checkClause": "((`guard_manifest_sha256` is null) or (length(`guard_manifest_sha256`) = 32))"
+    },
+    {
+      "constraintName": "ck_f3_01_27",
+      "checkClause": "(length(`configuration_sha256`) = 32)"
+    },
+    {
+      "constraintName": "ck_f3_01_28",
+      "checkClause": "(length(`source_provenance_bytes`) > 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_29",
+      "checkClause": "(length(`source_provenance_sha256`) = 32)"
+    },
+    {
+      "constraintName": "ck_f3_01_30",
+      "checkClause": "(length(`limit_profile_bytes`) > 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_31",
+      "checkClause": "(length(`limit_profile_sha256`) = 32)"
+    },
+    {
+      "constraintName": "ck_f3_01_32",
+      "checkClause": "(`max_region_bytes` >= 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_33",
+      "checkClause": "(`max_chunk_bytes` >= 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_34",
+      "checkClause": "(`max_decompressed_bytes` >= 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_35",
+      "checkClause": "(`max_nbt_depth` >= 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_36",
+      "checkClause": "(`max_members` >= 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_37",
+      "checkClause": "(`max_retained_bytes` >= 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_38",
+      "checkClause": "(`max_sql_packet_bytes` >= 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_39",
+      "checkClause": "(`max_native_artifact_bytes` >= 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_40",
+      "checkClause": "(`source_provenance_sha256` = unhex(sha2(`source_provenance_bytes`,256)))"
+    },
+    {
+      "constraintName": "ck_f3_01_41",
+      "checkClause": "(`limit_profile_sha256` = unhex(sha2(`limit_profile_bytes`,256)))"
+    },
+    {
+      "constraintName": "ck_f3_02_01",
+      "checkClause": "(`singleton_fixed1` = 1)"
+    },
+    {
+      "constraintName": "ck_f3_02_02",
+      "checkClause": "(((`last_commit_operation_uuid` is null) and (`last_commit_fingerprint` is null)) or ((`last_commit_operation_uuid` is not null) and (`last_commit_fingerprint` is not null)))"
+    },
+    {
+      "constraintName": "ck_f3_02_03",
+      "checkClause": "((length(`binding_uuid`) = 16) and (`binding_uuid` <> unhex(repeat(_utf8mb4\\'00\\',16))))"
+    },
+    {
+      "constraintName": "ck_f3_02_04",
+      "checkClause": "(`writer_epoch` >= 0)"
+    },
+    {
+      "constraintName": "ck_f3_02_05",
+      "checkClause": "((`owner_boot_uuid` is null) or ((length(`owner_boot_uuid`) = 16) and (`owner_boot_uuid` <> unhex(repeat(_utf8mb4\\'00\\',16)))))"
+    },
+    {
+      "constraintName": "ck_f3_02_06",
+      "checkClause": "((`last_commit_operation_uuid` is null) or ((length(`last_commit_operation_uuid`) = 16) and (`last_commit_operation_uuid` <> unhex(repeat(_utf8mb4\\'00\\',16)))))"
+    },
+    {
+      "constraintName": "ck_f3_02_07",
+      "checkClause": "((`last_commit_fingerprint` is null) or (length(`last_commit_fingerprint`) = 32))"
+    },
+    {
+      "constraintName": "ck_f3_03_01",
+      "checkClause": "(`singleton_fixed1` = 1)"
+    },
+    {
+      "constraintName": "ck_f3_03_02",
+      "checkClause": "(`cutover_state` in (_utf8mb4\\'LEGACY_UNCERTIFIED\\',_utf8mb4\\'CERTIFIED\\'))"
+    },
+    {
+      "constraintName": "ck_f3_03_03",
+      "checkClause": "(`format_version` = 2)"
+    },
+    {
+      "constraintName": "ck_f3_03_04",
+      "checkClause": "((length(`binding_uuid`) = 16) and (`binding_uuid` <> unhex(repeat(_utf8mb4\\'00\\',16))))"
+    },
+    {
+      "constraintName": "ck_f3_04_01",
+      "checkClause": "(`step` in (_utf8mb4\\'RESERVE\\',_utf8mb4\\'CANCEL\\',_utf8mb4\\'ENTITLEMENT_REGISTER\\',_utf8mb4\\'DOMAIN_MUTATION\\',_utf8mb4\\'REARM\\',_utf8mb4\\'ACTIVATE\\',_utf8mb4\\'RECALL_CHECKPOINT\\',_utf8mb4\\'ABORT_CLEANUP\\',_utf8mb4\\'MOVE_PREPARE\\',_utf8mb4\\'MOVE_COMMIT\\',_utf8mb4\\'MOVE_CLEANUP\\',_utf8mb4\\'MOVE_REMEDIATE\\',_utf8mb4\\'SOURCE_CAPTURE\\',_utf8mb4\\'SOURCE_PREPARE\\',_utf8mb4\\'SOURCE_WRITE_PREPARE\\',_utf8mb4\\'SOURCE_WRITE_RESULT\\',_utf8mb4\\'SOURCE_WRITE_RECONCILE\\',_utf8mb4\\'SOURCE_CUTOVER\\',_utf8mb4\\'SOURCE_RETIRE\\',_utf8mb4\\'SOURCE_REMEDIATE\\',_utf8mb4\\'RESERVATION_RELEASE\\',_utf8mb4\\'SCRIPT_PUBLICATION\\',_utf8mb4\\'RECALL_PREPARE\\',_utf8mb4\\'DEPLOYMENT_REGISTER\\',_utf8mb4\\'DEPLOYMENT_START\\',_utf8mb4\\'DEPLOYMENT_FINALIZE\\',_utf8mb4\\'DEPLOYMENT_RECONCILE\\',_utf8mb4\\'DEPLOYMENT_CLEANUP\\',_utf8mb4\\'DB_FIRST_RECALL\\',_utf8mb4\\'DB_FIRST_INITIAL_ACTIVATION\\',_utf8mb4\\'DB_FIRST_ACTIVE_CHECKPOINT\\',_utf8mb4\\'DB_FIRST_RECALL_REQUEST\\',_utf8mb4\\'DB_FIRST_RECALL_REFUSED\\'))"
+    },
+    {
+      "constraintName": "ck_f3_04_02",
+      "checkClause": "(`operation_state` in (_utf8mb4\\'RESERVED\\',_utf8mb4\\'COMMITTED\\',_utf8mb4\\'CANCELLED\\'))"
+    },
+    {
+      "constraintName": "ck_f3_04_03",
+      "checkClause": "(`context_encoding` = _utf8mb4\\'FP_RECOVERY_OPERATION_BE_V1\\')"
+    },
+    {
+      "constraintName": "ck_f3_04_04",
+      "checkClause": "(`boot_generation` > 0)"
+    },
+    {
+      "constraintName": "ck_f3_04_05",
+      "checkClause": "(`connection_id` > 0)"
+    },
+    {
+      "constraintName": "ck_f3_04_06",
+      "checkClause": "(((`original_diagnostic_sha256` is null) and (`original_diagnostic_identity` is null)) or ((`original_diagnostic_sha256` is not null) and (`original_diagnostic_identity` is not null)))"
+    },
+    {
+      "constraintName": "ck_f3_04_07",
+      "checkClause": "(((`operation_state` = _utf8mb4\\'RESERVED\\') and (`result_at` is null) and (`settled_by_operation_uuid` is null) and (`commit_witness_bytes` is null) and (`commit_witness_sha256` is null)) or ((`operation_state` = _utf8mb4\\'COMMITTED\\') and (`result_at` is not null) and (`settled_by_operation_uuid` is null) and (`commit_witness_bytes` is not null) and (`commit_witness_sha256` is not null)) or ((`operation_state` = _utf8mb4\\'CANCELLED\\') and (`result_at` is not null) and (`settled_by_operation_uuid` is not null) and (`commit_witness_bytes` is not null) and (`commit_witness_sha256` is not null)))"
+    },
+    {
+      "constraintName": "ck_f3_04_08",
+      "checkClause": "((`reserve_operation_uuid` is null) or (`reserve_operation_uuid` <> `operation_uuid`))"
+    },
+    {
+      "constraintName": "ck_f3_04_09",
+      "checkClause": "((`previous_step_operation_uuid` is null) or (`previous_step_operation_uuid` <> `operation_uuid`))"
+    },
+    {
+      "constraintName": "ck_f3_04_10",
+      "checkClause": "((`settled_by_operation_uuid` is null) or (`settled_by_operation_uuid` <> `operation_uuid`))"
+    },
+    {
+      "constraintName": "ck_f3_04_11",
+      "checkClause": "((`original_diagnostic_identity` is null) or (`original_diagnostic_sha256` = unhex(sha2(`original_diagnostic_identity`,256))))"
+    },
+    {
+      "constraintName": "ck_f3_04_12",
+      "checkClause": "((length(`binding_uuid`) = 16) and (`binding_uuid` <> unhex(repeat(_utf8mb4\\'00\\',16))))"
+    },
+    {
+      "constraintName": "ck_f3_04_13",
+      "checkClause": "((length(`operation_uuid`) = 16) and (`operation_uuid` <> unhex(repeat(_utf8mb4\\'00\\',16))))"
+    },
+    {
+      "constraintName": "ck_f3_04_14",
+      "checkClause": "((length(`workflow_uuid`) = 16) and (`workflow_uuid` <> unhex(repeat(_utf8mb4\\'00\\',16))))"
+    },
+    {
+      "constraintName": "ck_f3_04_15",
+      "checkClause": "((`pod_uuid` is null) or ((length(`pod_uuid`) = 16) and (`pod_uuid` <> unhex(repeat(_utf8mb4\\'00\\',16)))))"
+    },
+    {
+      "constraintName": "ck_f3_04_16",
+      "checkClause": "((`attempt_uuid` is null) or ((length(`attempt_uuid`) = 16) and (`attempt_uuid` <> unhex(repeat(_utf8mb4\\'00\\',16)))))"
+    },
+    {
+      "constraintName": "ck_f3_04_17",
+      "checkClause": "((`footprint_uuid` is null) or ((length(`footprint_uuid`) = 16) and (`footprint_uuid` <> unhex(repeat(_utf8mb4\\'00\\',16)))))"
+    },
+    {
+      "constraintName": "ck_f3_04_18",
+      "checkClause": "((`source_unit_uuid` is null) or ((length(`source_unit_uuid`) = 16) and (`source_unit_uuid` <> unhex(repeat(_utf8mb4\\'00\\',16)))))"
+    },
+    {
+      "constraintName": "ck_f3_04_19",
+      "checkClause": "((`forest_uuid` is null) or ((length(`forest_uuid`) = 16) and (`forest_uuid` <> unhex(repeat(_utf8mb4\\'00\\',16)))))"
+    },
+    {
+      "constraintName": "ck_f3_04_20",
+      "checkClause": "((length(`boot_uuid`) = 16) and (`boot_uuid` <> unhex(repeat(_utf8mb4\\'00\\',16))))"
+    },
+    {
+      "constraintName": "ck_f3_04_21",
+      "checkClause": "(`boot_generation` >= 0)"
+    },
+    {
+      "constraintName": "ck_f3_04_22",
+      "checkClause": "((length(`connection_generation_uuid`) = 16) and (`connection_generation_uuid` <> unhex(repeat(_utf8mb4\\'00\\',16))))"
+    },
+    {
+      "constraintName": "ck_f3_04_23",
+      "checkClause": "(`connection_id` >= 0)"
+    },
+    {
+      "constraintName": "ck_f3_04_24",
+      "checkClause": "(`fence_epoch` >= 0)"
+    },
+    {
+      "constraintName": "ck_f3_04_25",
+      "checkClause": "(length(`request_identity_bytes`) > 0)"
+    },
+    {
+      "constraintName": "ck_f3_04_26",
+      "checkClause": "(length(`request_identity_sha256`) = 32)"
+    },
+    {
+      "constraintName": "ck_f3_04_27",
+      "checkClause": "((`expected_domain_version` is null) or (`expected_domain_version` >= 0))"
+    },
+    {
+      "constraintName": "ck_f3_04_28",
+      "checkClause": "((`expected_locator_revision` is null) or (`expected_locator_revision` >= 0))"
+    },
+    {
+      "constraintName": "ck_f3_04_29",
+      "checkClause": "((`expected_source_revision` is null) or (`expected_source_revision` >= 0))"
+    },
+    {
+      "constraintName": "ck_f3_04_30",
+      "checkClause": "(length(`original_context_bytes`) > 0)"
+    },
+    {
+      "constraintName": "ck_f3_04_31",
+      "checkClause": "(length(`original_context_sha256`) = 32)"
+    },
+    {
+      "constraintName": "ck_f3_04_32",
+      "checkClause": "(length(`scope_bytes`) > 0)"
+    },
+    {
+      "constraintName": "ck_f3_04_33",
+      "checkClause": "(length(`scope_sha256`) = 32)"
+    },
+    {
+      "constraintName": "ck_f3_04_34",
+      "checkClause": "(((`step` = _utf8mb4\\'DEPLOYMENT_REGISTER\\') and (length(`preimage_bytes`) = 0)) or ((`step` <> _utf8mb4\\'DEPLOYMENT_REGISTER\\') and (length(`preimage_bytes`) > 0)))"
+    },
+    {
+      "constraintName": "ck_f3_04_35",
+      "checkClause": "(length(`preimage_sha256`) = 32)"
+    },
+    {
+      "constraintName": "ck_f3_04_36",
+      "checkClause": "(length(`target_bytes`) > 0)"
+    },
+    {
+      "constraintName": "ck_f3_04_37",
+      "checkClause": "(length(`target_sha256`) = 32)"
+    },
+    {
+      "constraintName": "ck_f3_04_38",
+      "checkClause": "((`reserve_operation_uuid` is null) or ((length(`reserve_operation_uuid`) = 16) and (`reserve_operation_uuid` <> unhex(repeat(_utf8mb4\\'00\\',16)))))"
+    },
+    {
+      "constraintName": "ck_f3_04_39",
+      "checkClause": "((`previous_step_operation_uuid` is null) or ((length(`previous_step_operation_uuid`) = 16) and (`previous_step_operation_uuid` <> unhex(repeat(_utf8mb4\\'00\\',16)))))"
+    },
+    {
+      "constraintName": "ck_f3_04_40",
+      "checkClause": "((`settled_by_operation_uuid` is null) or ((length(`settled_by_operation_uuid`) = 16) and (`settled_by_operation_uuid` <> unhex(repeat(_utf8mb4\\'00\\',16)))))"
+    },
+    {
+      "constraintName": "ck_f3_04_41",
+      "checkClause": "((`commit_witness_sha256` is null) or (length(`commit_witness_sha256`) = 32))"
+    },
+    {
+      "constraintName": "ck_f3_04_42",
+      "checkClause": "((`original_diagnostic_sha256` is null) or (length(`original_diagnostic_sha256`) = 32))"
+    },
+    {
+      "constraintName": "ck_f3_04_43",
+      "checkClause": "(length(`operation_fingerprint`) = 32)"
+    },
+    {
+      "constraintName": "ck_f3_04_44",
+      "checkClause": "(`request_identity_sha256` = unhex(sha2(`request_identity_bytes`,256)))"
+    },
+    {
+      "constraintName": "ck_f3_04_45",
+      "checkClause": "(`original_context_sha256` = unhex(sha2(`original_context_bytes`,256)))"
+    },
+    {
+      "constraintName": "ck_f3_04_46",
+      "checkClause": "(`scope_sha256` = unhex(sha2(`scope_bytes`,256)))"
+    },
+    {
+      "constraintName": "ck_f3_04_47",
+      "checkClause": "(`preimage_sha256` = unhex(sha2(`preimage_bytes`,256)))"
+    },
+    {
+      "constraintName": "ck_f3_04_48",
+      "checkClause": "(`target_sha256` = unhex(sha2(`target_bytes`,256)))"
+    },
+    {
+      "constraintName": "ck_f3_04_49",
+      "checkClause": "((`commit_witness_bytes` is null) or ((`commit_witness_sha256` is not null) and (`commit_witness_sha256` = unhex(sha2(`commit_witness_bytes`,256)))))"
+    },
+    {
+      "constraintName": "ck_f3_05_01",
+      "checkClause": "(`is_active` in (0,1))"
+    },
+    {
+      "constraintName": "ck_f3_05_02",
+      "checkClause": "(`operating_mode` in (_utf8mb4\\'NORMAL\\',_utf8mb4\\'WORLD_IDLE\\'))"
+    },
+    {
+      "constraintName": "ck_f3_05_04",
+      "checkClause": "((`owner_uuid` is not null) or (`is_active` = 0) or (`operating_mode` = _utf8mb4\\'WORLD_IDLE\\'))"
+    },
+    {
+      "constraintName": "ck_f3_05_05",
+      "checkClause": "(abs(`pos_x`) < 1.0e300)"
+    },
+    {
+      "constraintName": "ck_f3_05_06",
+      "checkClause": "(abs(`pos_y`) < 1.0e300)"
+    },
+    {
+      "constraintName": "ck_f3_05_07",
+      "checkClause": "(abs(`pos_z`) < 1.0e300)"
+    },
+    {
+      "constraintName": "ck_f3_05_08",
+      "checkClause": "(abs(`yaw`) < 1.0e30)"
+    },
+    {
+      "constraintName": "ck_f3_05_09",
+      "checkClause": "(abs(`pitch`) < 1.0e30)"
+    },
+    {
+      "constraintName": "ck_f3_05_10",
+      "checkClause": "((length(`uuid`) = 16) and (`uuid` <> unhex(repeat(_utf8mb4\\'00\\',16))))"
+    },
+    {
+      "constraintName": "ck_f3_05_11",
+      "checkClause": "((`owner_uuid` is null) or ((length(`owner_uuid`) = 16) and (`owner_uuid` <> unhex(repeat(_utf8mb4\\'00\\',16)))))"
+    },
+    {
+      "constraintName": "ck_f3_05_12",
+      "checkClause": "(`state_version` >= 0)"
+    },
+    {
+      "constraintName": "ck_f3_05_13",
+      "checkClause": "(length(`world_name`) > 0)"
+    },
+    {
+      "constraintName": "ck_f3_05_14",
+      "checkClause": "((length(`binding_uuid`) = 16) and (`binding_uuid` <> unhex(repeat(_utf8mb4\\'00\\',16))))"
+    },
+    {
+      "constraintName": "ck_f3_05_15",
+      "checkClause": "((length(`last_mutation_operation_uuid`) = 16) and (`last_mutation_operation_uuid` <> unhex(repeat(_utf8mb4\\'00\\',16))))"
+    }
+  ]
+}

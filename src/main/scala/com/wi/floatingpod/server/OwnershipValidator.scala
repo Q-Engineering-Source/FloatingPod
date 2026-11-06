@@ -21,8 +21,9 @@ case object NotOwner extends OwnershipValidation
 final case class VersionMismatch(actualVersion: Long) extends OwnershipValidation
 
 /** 每次请求都直接读取权威 repository 的所有权与版本验证 seam，不缓存且不修改状态。 */
-final class OwnershipValidator(repository: FloatingPodRepository):
-  require(repository != null, "repository must not be null")
+final class OwnershipValidator private (repository: FloatingPodRepository, bootReads: Option[MainPodReadAccess]):
+  def this(repository: FloatingPodRepository) = this(repository, None)
+  require(bootReads != null && (bootReads.nonEmpty || repository != null), "repository or actual Main Boot read lease required")
 
   /**
    * 以一次新的 UUID 查询依序确认存在性、所有权与版本；repository 失败会保留原始失败而非伪造拒绝。
@@ -31,8 +32,21 @@ final class OwnershipValidator(repository: FloatingPodRepository):
     require(podUuid != null, "podUuid must not be null")
     require(playerUuid != null, "playerUuid must not be null")
     require(expectedStateVersion >= 0L, "expectedStateVersion must not be negative")
-    repository.findByUuid(podUuid).get match
+    val state = bootReads match
+      case Some(projection) => projection.findState(podUuid)
+      case None => repository.findByUuid(podUuid).get
+    state match
       case None => UnknownPod
       case Some(state) if !state.ownerUuid.contains(playerUuid) => NotOwner
       case Some(state) if state.stateVersion != expectedStateVersion => VersionMismatch(state.stateVersion)
       case Some(state) => OwnershipAccepted(state)
+
+object OwnershipValidator:
+  /** 仅 Boot 读预览；最终 lifecycle/critical ACK 仍独立必要。退休时不回退 SQL。 */
+  private[floatingpod] def fromMainBoot(projection: MainBootProjection): OwnershipValidator =
+    fromMainReads(projection)
+
+  private[floatingpod] def fromMainReads(projection: MainPodReadAccess): OwnershipValidator =
+    require(projection != null, "actual claimed Boot read lease required")
+    projection.requireCurrentReads()
+    new OwnershipValidator(null, Some(projection))

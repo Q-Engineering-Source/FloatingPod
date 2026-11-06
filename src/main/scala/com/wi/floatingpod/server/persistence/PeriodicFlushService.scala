@@ -10,12 +10,13 @@ import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong}
 import scala.util.{Failure, Success, Try}
 
 /**
- * 独立于 Minecraft tick 的脏状态定时刷盘器，避免非关键位置状态长期只停留在内存中。
+ * 独立调度只请求Main捕获脏状态；实际提交/ACK由永久Main pump推进。
  */
 final class PeriodicFlushService private (
     private val flushOperation: () => Try[Int],
     val intervalSeconds: Int,
-    private val executorFactory: () => ScheduledExecutorService
+    private val executorFactory: () => ScheduledExecutorService,
+    private val captureRequestsOnly: Boolean
 ):
   require(flushOperation != null, "flushOperation must not be null")
   require(executorFactory != null, "executorFactory must not be null")
@@ -30,7 +31,7 @@ final class PeriodicFlushService private (
 
   /** 使用活动辅助机的脏缓存作为唯一写入准入条件创建生产刷盘器。 */
   def this(manager: ActiveFloatingPodManager, intervalSeconds: Int) =
-    this(PeriodicFlushService.flushOperationFor(manager), intervalSeconds, PeriodicFlushService.newExecutor)
+    this(PeriodicFlushService.flushOperationFor(manager), intervalSeconds, PeriodicFlushService.newExecutor, true)
 
   /** 使用 30 秒生产默认间隔创建刷盘器。 */
   def this(manager: ActiveFloatingPodManager) =
@@ -75,7 +76,7 @@ final class PeriodicFlushService private (
   }
 
   /**
-   * 停止后续调度并等待当前刷盘至多十秒；超时会强制中断 executor 并报告失败。
+   * 生产路径只关闭后续调度且nonblocking观察executor；测试用同步callback路径保留原有bounded等待。
    *
    * @return 当前任务终止后的成功或原始生命周期失败。
    */
@@ -91,13 +92,18 @@ final class PeriodicFlushService private (
 
           activeExecutor.shutdown()
           try
-            if !activeExecutor.awaitTermination(PeriodicFlushService.StopTimeoutSeconds, TimeUnit.SECONDS) then
-              logger.warn("Periodic flush service did not terminate within 10 seconds, forcing shutdown")
-              activeExecutor.shutdownNow()
-              if !activeExecutor.isTerminated then
-                throw new IllegalStateException("Periodic flush executor did not terminate after forced shutdown")
-            executor = null
-            logger.info("Periodic flush service stopped")
+            if captureRequestsOnly then
+              // 生产job只发短内存Main请求；Main不等待executor，更不等待数据库IO。
+              if activeExecutor.isTerminated then executor = null
+              logger.info("Periodic Main capture stop requested; executor exit observed=" + activeExecutor.isTerminated)
+            else
+              if !activeExecutor.awaitTermination(PeriodicFlushService.StopTimeoutSeconds, TimeUnit.SECONDS) then
+                logger.warn("Periodic flush service did not terminate within 10 seconds, forcing shutdown")
+                activeExecutor.shutdownNow()
+                if !activeExecutor.isTerminated then
+                  throw new IllegalStateException("Periodic flush executor did not terminate after forced shutdown")
+              executor = null
+              logger.info("Periodic flush service stopped")
           catch
             case interruption: InterruptedException =>
               try activeExecutor.shutdownNow()
@@ -116,7 +122,12 @@ final class PeriodicFlushService private (
   /** 返回当前是否仍接受并调度周期刷盘。 */
   def isRunning: Boolean = running.get()
 
-  /** 返回本次启动以来成功完成的刷盘周期数。 */
+  /** stop intent不等于实际executor退出；持久化停服报告必须保留此真实观察。 */
+  private[floatingpod] def terminationPending: Boolean = lifecycleLock.synchronized {
+    executor != null && !executor.isTerminated
+  }
+
+  /** 生产路径为成功发出的capture request cycles，不是durable completion计数。 */
   def getFlushCount: Long = flushCount.get()
 
   /** 返回本次启动以来失败的刷盘周期数。 */
@@ -129,7 +140,8 @@ final class PeriodicFlushService private (
         case Success(persistedCount) =>
           CrashPointHarness.getInstance.checkCrashPoint(CrashPointHarness.AfterPeriodicFlush)
           flushCount.incrementAndGet()
-          logger.info(s"Periodic flush completed: $persistedCount dirty states persisted")
+          if captureRequestsOnly then logger.info(s"Periodic Main capture cycle requested: $persistedCount coalesced signals; no persistence ACK")
+          else logger.info(s"Periodic flush completed: $persistedCount dirty states persisted")
         case Failure(problem) =>
           failureCount.incrementAndGet()
           logger.error(s"Periodic flush failed: ${problem.getMessage}", problem)
@@ -151,10 +163,10 @@ object PeriodicFlushService:
       intervalSeconds: Int,
       executorFactory: () => ScheduledExecutorService = newExecutor
   ): PeriodicFlushService =
-    new PeriodicFlushService(flushOperation, intervalSeconds, executorFactory)
+    new PeriodicFlushService(flushOperation, intervalSeconds, executorFactory, false)
 
   private def flushOperationFor(manager: ActiveFloatingPodManager): () => Try[Int] =
     require(manager != null, "manager must not be null")
-    () => manager.flushCachedStates()
+    () => manager.requestPeriodicFlush()
 
   private def newExecutor(): ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()

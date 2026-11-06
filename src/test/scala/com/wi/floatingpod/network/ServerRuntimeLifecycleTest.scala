@@ -11,23 +11,154 @@ import net.minecraftforge.fml.common.event.{FMLServerAboutToStartEvent, FMLServe
 import net.minecraftforge.fml.common.network.simpleimpl.MessageContext
 
 import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertSame, assertThrows, assertTrue}
-import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.{AfterEach, Test}
+import org.junit.jupiter.api.io.TempDir
 
 import java.nio.file.{Files, Path, Paths}
 import java.util.UUID
+import java.net.Proxy
+import net.minecraft.server.MinecraftServer
+import net.minecraft.command.{ICommandManager, ServerCommandManager}
+import net.minecraft.util.datafix.DataFixer
+import net.minecraft.world.{EnumDifficulty, GameType}
 import scala.collection.mutable.ListBuffer
 import scala.util.{Success, Try}
 
 /** M5B 的服务器私有设置、运行时装配与 FML 生命周期行为测试。 */
 class ServerRuntimeLifecycleTest:
+  @TempDir
+  var lifecycleServerDirectory: Path = _
+  private var lifecycleServer: Option[M5bNonDedicatedLifecycleServer] = None
+
+  @Test
+  def integratedRuntimeRejectsBeforeCallingLegacyFactory(): Unit =
+    val events = ListBuffer.empty[String]
+    val lifecycle = new ServerRuntimeLifecycle(new M5bRecordingFactory(new M5bFourPhaseRuntime(events)))
+    lifecycle.configure(ServerRuntimeSettings.sqlite(lifecycleServerDirectory.resolve("absent/pods.db"), 1))
+    val failure = assertThrows(classOf[IllegalStateException], () => lifecycle.onServerAboutToStart(actualAboutEvent()))
+    assertTrue(failure.getMessage.contains("Integrated MySQL runtime is not provided"))
+    assertTrue(events.isEmpty)
+    assertFalse(Files.exists(lifecycleServerDirectory.resolve("absent")))
+
+  @Test
+  def dedicatedRuntimeDoesNotRequireLegacySettings(): Unit =
+    val server = new M5bNonDedicatedLifecycleServer(lifecycleServerDirectory, dedicated = true)
+    lifecycleServer = Some(server)
+    val events = ListBuffer.empty[String]
+    val runtime = new M5bFourPhaseRuntime(events)
+    val lifecycle = new ServerRuntimeLifecycle(new ServerRuntimeFactory:
+      override def create(settings: ServerRuntimeSettings): ServerRuntime =
+        throw new AssertionError("legacy factory must not run")
+      override private[network] def createClaimed(actual: MinecraftServer): ServerRuntime =
+        assertSame(server, actual)
+        events += "claimed-create"
+        runtime
+    )
+    lifecycle.onServerAboutToStart(new FMLServerAboutToStartEvent(server))
+    assertEquals(List("claimed-create", "about"), events.toList)
+    lifecycle.onServerStopped(null)
+
+  @Test
+  def productionFactoryRejectsLegacySqliteBeforeCreatingDirectoryOrRepository(): Unit =
+    var repositories = 0
+    val directory = lifecycleServerDirectory.resolve("uncreated")
+    val factory = new ForgeServerRuntimeFactory(new Object(), repositoryFactory = _ =>
+      repositories += 1
+      throw new AssertionError("repository must not open")
+    )
+    val failure = assertThrows(classOf[IllegalStateException], () =>
+      factory.create(ServerRuntimeSettings.sqlite(directory.resolve("pods.db"), 1)))
+    assertTrue(failure.getMessage.contains("Legacy SQLite production runtime is disabled"))
+    assertEquals(0, repositories)
+    assertFalse(Files.exists(directory))
+
+  /** 正常构造真实服务器，但不启动 world、commands 或网络监听。 */
+  private def actualAboutEvent(): FMLServerAboutToStartEvent =
+    val server = lifecycleServer.getOrElse {
+      val created = new M5bNonDedicatedLifecycleServer(lifecycleServerDirectory)
+      lifecycleServer = Some(created)
+      created
+    }
+    val event = new FMLServerAboutToStartEvent(server)
+    assertSame(server, event.getServer)
+    assertFalse(server.isDedicatedServer)
+    event
+
+  @AfterEach
+  def closeLifecycleServerFixture(): Unit =
+    lifecycleServer.foreach { server =>
+      var failure: Throwable = null
+      try server.getPlayerUsageSnooper.stopSnooper()
+      catch case cause: Throwable => failure = cause
+      try server.getNetworkSystem.terminateEndpoints()
+      catch
+        case cause: Throwable =>
+          if failure == null then failure = cause
+          else if failure ne cause then failure.addSuppressed(cause)
+      if failure != null then throw failure
+      lifecycleServer = None
+    }
   /** AboutToStart 是可否决边界，工厂或 callback 故障不得降级成仅记录日志。 */
   @Test
   def aboutToStartFailurePropagatesToTheLifecycleCaller(): Unit =
     val failure = new IllegalStateException("callback failed")
-    val lifecycle = new ServerRuntimeLifecycle(new M5bFailingAboutFactory(failure))
+    val lifecycle = ServerRuntimeLifecycle.legacyForTests(new M5bFailingAboutFactory(failure))
     lifecycle.configure(ServerRuntimeSettings.sqlite(Paths.get("C:/tmp/floatingpod-about-failure.db"), 1))
 
-    assertSame(failure, assertThrows(classOf[IllegalStateException], () => lifecycle.onServerAboutToStart(null)))
+    assertSame(failure, assertThrows(classOf[IllegalStateException], () => lifecycle.onServerAboutToStart(actualAboutEvent())))
+
+  @Test
+  def aboutToStartCleanupPreservesOriginalPrimaryForSameAndDistinctFailures(): Unit =
+    def lifecycleFor(primary: Throwable, cleanup: Throwable): ServerRuntimeLifecycle =
+      val factory = new ServerRuntimeFactory:
+        override def create(settings: ServerRuntimeSettings): ServerRuntime = new ServerRuntime:
+          override def onServerAboutToStart(event: FMLServerAboutToStartEvent): Unit = throw primary
+          override def onServerStarting(event: FMLServerStartingEvent): Unit = ()
+          override def onServerStopped(event: FMLServerStoppedEvent): Unit = throw cleanup
+      val lifecycle = ServerRuntimeLifecycle.legacyForTests(factory)
+      lifecycle.configure(ServerRuntimeSettings.sqlite(Paths.get("C:/tmp/floatingpod-about-cleanup.db"), 1))
+      lifecycle
+
+    val event = actualAboutEvent()
+    val same = new IllegalStateException("AboutToStart primary also thrown during cleanup")
+    val sameLifecycle = lifecycleFor(same, same)
+    assertSame(same, assertThrows(classOf[IllegalStateException], () => sameLifecycle.onServerAboutToStart(event)))
+    assertEquals(0, same.getSuppressed.length)
+
+    val primary = new IllegalStateException("AboutToStart primary")
+    val cleanup = new IllegalStateException("runtime cleanup")
+    val distinctLifecycle = lifecycleFor(primary, cleanup)
+    assertSame(primary, assertThrows(classOf[IllegalStateException], () => distinctLifecycle.onServerAboutToStart(event)))
+    assertTrue(primary.getSuppressed.exists(_ eq cleanup))
+
+  @Test
+  def aboutToStartReportCleanupPreservesPrimaryAndAttachesDistinctCloseFailure(): Unit =
+    def lifecycleFor(primary: Throwable, closeFailure: Throwable): ServerRuntimeLifecycle =
+      val events = ListBuffer.empty[String]
+      val runtime = new ManagedServerRuntime(
+        new M5bRepository(events, closeFailure),
+        new M5bPersistence(events),
+        new M5bEndpoint,
+        new M5bRegistry(events),
+        validateWorldBinding = _ => throw primary
+      )
+      val lifecycle = ServerRuntimeLifecycle.legacyForTests(new M5bRecordingFactory(runtime))
+      lifecycle.configure(ServerRuntimeSettings.sqlite(Paths.get("C:/tmp/floatingpod-about-report-cleanup.db"), 1))
+      lifecycle
+
+    val event = actualAboutEvent()
+    val same = new IllegalStateException("AboutToStart primary also reported as close failure")
+    val sameLifecycle = lifecycleFor(same, same)
+    assertSame(same, assertThrows(classOf[IllegalStateException], () => sameLifecycle.onServerAboutToStart(event)))
+    assertEquals(0, same.getSuppressed.length)
+    assertTrue(sameLifecycle.latestFinalShutdownReport.exists(_.closeFailure.contains(same)))
+
+    val primary = new IllegalStateException("AboutToStart primary")
+    val closeFailure = new IllegalStateException("repository close")
+    val distinctLifecycle = lifecycleFor(primary, closeFailure)
+    assertSame(primary, assertThrows(classOf[IllegalStateException], () => distinctLifecycle.onServerAboutToStart(event)))
+    assertTrue(primary.getSuppressed.exists(_ eq closeFailure))
+    assertTrue(distinctLifecycle.latestFinalShutdownReport.exists(_.closeFailure.contains(closeFailure)))
 
   @Test
   def lifecycleRetainsExactStoppingAndFinalCleanupFailuresAfterRuntimeClears(): Unit =
@@ -43,10 +174,10 @@ class ServerRuntimeLifecycleTest:
       new M5bRegistry(events, uninstallFailure = endpointFailure),
       clearStartingEvent = () => throw resolverFailure
     )
-    val lifecycle = new ServerRuntimeLifecycle(new M5bRecordingFactory(managed))
+    val lifecycle = ServerRuntimeLifecycle.legacyForTests(new M5bRecordingFactory(managed))
     lifecycle.configure(ServerRuntimeSettings.sqlite(Paths.get("C:/tmp/floatingpod-report-identities.db"), 1))
 
-    lifecycle.onServerAboutToStart(null)
+    lifecycle.onServerAboutToStart(actualAboutEvent())
     lifecycle.onServerStarting(null)
     lifecycle.onServerStopping(null)
     lifecycle.onServerStopped(null)
@@ -99,10 +230,10 @@ class ServerRuntimeLifecycleTest:
   def aboutToStartCreatesTheRuntimeBeforeStarting(): Unit =
     val events = ListBuffer.empty[String]
     val runtime = new M5bFourPhaseRuntime(events)
-    val lifecycle = new ServerRuntimeLifecycle(new M5bRecordingFactory(runtime))
+    val lifecycle = ServerRuntimeLifecycle.legacyForTests(new M5bRecordingFactory(runtime))
     lifecycle.configure(ServerRuntimeSettings.sqlite(Paths.get("C:/tmp/floatingpod-about.db"), 1))
 
-    lifecycle.onServerAboutToStart(null)
+    lifecycle.onServerAboutToStart(actualAboutEvent())
     lifecycle.onServerStarting(null)
 
     assertEquals(List("create", "about", "start"), events.toList)
@@ -110,10 +241,10 @@ class ServerRuntimeLifecycleTest:
   def configuredLifecycleStartsPersistenceBeforeInstallingItsEndpoint(): Unit =
     val events = ListBuffer.empty[String]
     val runtime = new M5bRecordingRuntime(events)
-    val lifecycle = new ServerRuntimeLifecycle(new M5bRecordingFactory(runtime))
+    val lifecycle = ServerRuntimeLifecycle.legacyForTests(new M5bRecordingFactory(runtime))
 
     lifecycle.configure(ServerRuntimeSettings.sqlite(Paths.get("C:/tmp/floatingpod.db"), 256))
-    lifecycle.onServerAboutToStart(null)
+    lifecycle.onServerAboutToStart(actualAboutEvent())
     lifecycle.onServerStarting(null)
 
     assertEquals(List("create", "persistence-start", "endpoint-install"), events.toList)
@@ -155,13 +286,13 @@ class ServerRuntimeLifecycleTest:
   @Test
   def lifecycleRejectsStartBeforeConfigureDuplicateConfigureDuplicateStartAndStopBeforeStart(): Unit =
     val events = ListBuffer.empty[String]
-    val lifecycle = new ServerRuntimeLifecycle(new M5bRecordingFactory(new M5bRecordingRuntime(events)))
+    val lifecycle = ServerRuntimeLifecycle.legacyForTests(new M5bRecordingFactory(new M5bRecordingRuntime(events)))
 
     assertThrows(classOf[IllegalStateException], () => lifecycle.onServerStarting(null))
     assertThrows(classOf[IllegalStateException], () => lifecycle.onServerStopping(null))
     lifecycle.configure(ServerRuntimeSettings.sqlite(Paths.get("C:/tmp/floatingpod.db"), 1))
     assertThrows(classOf[IllegalStateException], () => lifecycle.configure(ServerRuntimeSettings.sqlite(Paths.get("C:/tmp/other.db"), 1)))
-    lifecycle.onServerAboutToStart(null)
+    lifecycle.onServerAboutToStart(actualAboutEvent())
     lifecycle.onServerStarting(null)
     assertThrows(classOf[IllegalStateException], () => lifecycle.onServerStarting(null))
 
@@ -169,14 +300,14 @@ class ServerRuntimeLifecycleTest:
   def lifecycleCreatesFreshRuntimeForRestartAfterSuccessfulStop(): Unit =
     val events = ListBuffer.empty[String]
     val factory = new M5bRestartingFactory(events)
-    val lifecycle = new ServerRuntimeLifecycle(factory)
+    val lifecycle = ServerRuntimeLifecycle.legacyForTests(factory)
     lifecycle.configure(ServerRuntimeSettings.sqlite(Paths.get("C:/tmp/floatingpod.db"), 1))
 
-    lifecycle.onServerAboutToStart(null)
+    lifecycle.onServerAboutToStart(actualAboutEvent())
     lifecycle.onServerStarting(null)
     lifecycle.onServerStopping(null)
     lifecycle.onServerStopped(null)
-    lifecycle.onServerAboutToStart(null)
+    lifecycle.onServerAboutToStart(actualAboutEvent())
     lifecycle.onServerStarting(null)
     lifecycle.onServerStopping(null)
     lifecycle.onServerStopped(null)
@@ -198,14 +329,14 @@ class ServerRuntimeLifecycleTest:
     )
     val replacement = new M5bRecordingRuntime(events)
     val factory = new M5bRuntimeSequenceFactory(failedRuntime, replacement)
-    val lifecycle = new ServerRuntimeLifecycle(factory)
+    val lifecycle = ServerRuntimeLifecycle.legacyForTests(factory)
     lifecycle.configure(ServerRuntimeSettings.sqlite(Paths.get("C:/tmp/failed-stop.db"), 1))
-    lifecycle.onServerAboutToStart(null)
+    lifecycle.onServerAboutToStart(actualAboutEvent())
     lifecycle.onServerStarting(null)
 
     lifecycle.onServerStopping(null)
     lifecycle.onServerStopped(null)
-    lifecycle.onServerAboutToStart(null)
+    lifecycle.onServerAboutToStart(actualAboutEvent())
     lifecycle.onServerStarting(null)
     assertEquals(2, factory.created)
 
@@ -294,16 +425,16 @@ class ServerRuntimeLifecycleTest:
       new M5bRegistry(events),
       ticketManager = Some(new ChunkLoadingManager(new M5bRepository(events), new M5bGateway(callbackFailure)))
     )
-    val lifecycle = new ServerRuntimeLifecycle(new M5bRuntimeSequenceFactory(failedRuntime, new M5bRecordingRuntime(events)))
+    val lifecycle = ServerRuntimeLifecycle.legacyForTests(new M5bRuntimeSequenceFactory(failedRuntime, new M5bRecordingRuntime(events)))
     lifecycle.configure(ServerRuntimeSettings.sqlite(Paths.get("C:/tmp/about-close.db"), 1))
 
-    val thrown = assertThrows(classOf[IllegalStateException], () => lifecycle.onServerAboutToStart(null))
+    val thrown = assertThrows(classOf[IllegalStateException], () => lifecycle.onServerAboutToStart(actualAboutEvent()))
     assertTrue(thrown.getSuppressed.contains(closeFailure))
     lifecycle.onServerStopped(null)
 
     assertEquals(1, events.count(_ == "repository-close"))
     assertTrue(lifecycle.latestFinalShutdownReport.exists(_.closeFailure.contains(closeFailure)))
-    lifecycle.onServerAboutToStart(null)
+    lifecycle.onServerAboutToStart(actualAboutEvent())
 
   @Test
   def stopPreservesPrimaryFailureAndSuppressesLaterCleanupFailures(): Unit =
@@ -324,7 +455,7 @@ class ServerRuntimeLifecycleTest:
     assertEquals(List("persistence-start", "endpoint-install", "endpoint-uninstall", "persistence-stop", "repository-close"), events.toList)
 
   @Test
-  def productionFactoryComposesRuntimeWithInjectedStorageAndForgeFreeConstructors(): Unit =
+  def legacyTestFactoryComposesRuntimeWithInjectedStorageAndForgeFreeConstructors(): Unit =
     val events = ListBuffer.empty[String]
     val repository = new M5bRepository(events)
     val registry = new M5bRegistry(events)
@@ -339,13 +470,13 @@ class ServerRuntimeLifecycleTest:
       endpointRegistry = registry
     )
 
-    val runtime = factory.create(ServerRuntimeSettings.sqlite(Paths.get("C:/tmp/factory.db"), 2))
+    val runtime = factory.createLegacyForTests(ServerRuntimeSettings.sqlite(Paths.get("C:/tmp/factory.db"), 2))
 
     assertTrue(runtime.isInstanceOf[ManagedServerRuntime])
     assertEquals(List("repository", "tickets", "manager", "endpoint", "flush", "persistence"), events.toList)
 
   @Test
-  def productionFactoryAssemblesOneDeferredBundleAndKeepsAwaitingPublicationFenceClosed(): Unit =
+  def legacyTestFactoryAssemblesOneDeferredBundleAndKeepsAwaitingPublicationFenceClosed(): Unit =
     val events = ListBuffer.empty[String]
     val repository = new M5bRepository(events)
     var bundleCalls = 0
@@ -371,7 +502,7 @@ class ServerRuntimeLifecycleTest:
         )
     )
 
-    val runtime = factory.create(ServerRuntimeSettings.sqlite(Paths.get("C:/tmp/factory-deferred-bundle.db"), 2))
+    val runtime = factory.createLegacyForTests(ServerRuntimeSettings.sqlite(Paths.get("C:/tmp/factory-deferred-bundle.db"), 2))
     runtime.onServerAboutToStart(null)
     runtime.onServerStarting(null)
 
@@ -385,7 +516,7 @@ class ServerRuntimeLifecycleTest:
     assertTrue(events.contains("repository-close"))
 
   @Test
-  def productionFactoryInstallsWorldBindingGateBeforeTheTicketCallbackAndOnlyOnce(): Unit =
+  def legacyTestFactoryInstallsWorldBindingGateBeforeTheTicketCallbackAndOnlyOnce(): Unit =
     val events = ListBuffer.empty[String]
     val repository = new M5bRepository(events)
     val gateway = new M5bGateway(events = events)
@@ -408,7 +539,7 @@ class ServerRuntimeLifecycleTest:
       )
     )
 
-    val runtime = factory.create(ServerRuntimeSettings.sqlite(Paths.get("C:/tmp/factory-world-binding-gate.db"), 2))
+    val runtime = factory.createLegacyForTests(ServerRuntimeSettings.sqlite(Paths.get("C:/tmp/factory-world-binding-gate.db"), 2))
     runtime.onServerAboutToStart(null)
     runtime.onServerAboutToStart(null)
 
@@ -416,7 +547,7 @@ class ServerRuntimeLifecycleTest:
     assertEquals(1, gateway.callbackRegistrations)
 
   @Test
-  def productionFactoryClosesOpenedRepositoryAndPreservesConstructionFailure(): Unit =
+  def legacyTestFactoryClosesOpenedRepositoryAndPreservesConstructionFailure(): Unit =
     val events = ListBuffer.empty[String]
     val repository = new M5bRepository(events)
     val constructionFailure = new IllegalStateException("manager construction failed")
@@ -426,13 +557,13 @@ class ServerRuntimeLifecycleTest:
       managerFactory = (repo, tickets) => throw constructionFailure
     )
 
-    val failure = assertThrows(classOf[IllegalStateException], () => factory.create(ServerRuntimeSettings.sqlite(Paths.get("C:/tmp/factory-failure.db"), 2)))
+    val failure = assertThrows(classOf[IllegalStateException], () => factory.createLegacyForTests(ServerRuntimeSettings.sqlite(Paths.get("C:/tmp/factory-failure.db"), 2)))
 
     assertSame(constructionFailure, failure)
     assertEquals(List("repository", "repository-close"), events.toList)
 
   @Test
-  def productionFactoryRejectsMissingEntitlementStoreBeforeTicketsAndClosesOnce(): Unit =
+  def legacyTestFactoryRejectsMissingEntitlementStoreBeforeTicketsAndClosesOnce(): Unit =
     val events = ListBuffer.empty[String]
     val repository = new M5bMissingEntitlementRepository(events)
     val factory = new ForgeServerRuntimeFactory(
@@ -441,7 +572,7 @@ class ServerRuntimeLifecycleTest:
       ticketManagerFactory = (_, _) => throw new AssertionError("tickets must not be constructed")
     )
 
-    assertThrows(classOf[IllegalStateException], () => factory.create(ServerRuntimeSettings.sqlite(Paths.get("C:/tmp/missing-entitlement.db"), 1)))
+    assertThrows(classOf[IllegalStateException], () => factory.createLegacyForTests(ServerRuntimeSettings.sqlite(Paths.get("C:/tmp/missing-entitlement.db"), 1)))
     assertEquals(List("repository", "repository-close"), events.toList)
 
   @Test
@@ -508,6 +639,78 @@ class ServerRuntimeLifecycleTest:
     assertEquals(1, harness.recoveryEvents.unregisterCalls)
     assertEquals(1, harness.controlledStop.requests)
     assertTrue(!harness.events.contains("persistence-start"))
+
+  @Test
+  def deferredBeginFailedDecisionPropagatesCauseWhenControlledStopFails(): Unit =
+    val recoveryFailure = new IllegalStateException("recovery failed")
+    val stopFailure = new IllegalStateException("controlled stop failed")
+    val harness = new DeferredRuntimeHarness(
+      RecoveryStep.Terminal(StartupPublicationDecision.Failed("recovery failed safely", recoveryFailure)),
+      stopFailure = stopFailure
+    )
+
+    harness.runtime.onServerAboutToStart(null)
+    val thrown = assertThrows(classOf[IllegalStateException], () => harness.runtime.onServerStarting(null))
+    harness.recoveryEvents.tick()
+    harness.runtime.onServerStopping(null)
+    harness.runtime.onServerStopping(null)
+    harness.runtime.onServerStopped(null)
+    harness.runtime.onServerStopped(null)
+
+    val report = harness.runtime.latestStoppingReport.get
+    assertSame(recoveryFailure, thrown)
+    assertSame(stopFailure, recoveryFailure.getSuppressed.last)
+    assertEquals(1, recoveryFailure.getSuppressed.length)
+    assertTrue(report.controlledStopAttempted)
+    assertFalse(report.controlledStopSucceeded)
+    assertEquals(Some(stopFailure), report.controlledStopFailure)
+    assertEquals(Some(recoveryFailure), report.deferredFailure)
+    assertEquals(List(RecoveryExit.Blocked), harness.recovery.finishExits.toList)
+    assertEquals(1, harness.recoveryEvents.unregisterCalls)
+    assertEquals(1, harness.controlledStop.requests)
+    assertEquals(1, harness.events.count(_ == "finish:Blocked"))
+    assertEquals(1, harness.events.count(_ == "recovery-unregister"))
+    assertEquals(1, harness.events.count(_ == "controlled-stop"))
+    assertEquals(1, harness.events.count(_ == "repository-close"))
+    assertTrue(!harness.events.contains("persistence-start"))
+    assertTrue(!harness.events.contains("endpoint-install"))
+
+  @Test
+  def deferredAdvanceFailedDecisionPropagatesCauseWhenControlledStopFails(): Unit =
+    val recoveryFailure = new IllegalStateException("recovery failed")
+    val stopFailure = new IllegalStateException("controlled stop failed")
+    val harness = new DeferredRuntimeHarness(
+      RecoveryStep.AwaitingTick,
+      List(Right(RecoveryStep.Terminal(StartupPublicationDecision.Failed("recovery failed safely", recoveryFailure)))),
+      stopFailure = stopFailure
+    )
+
+    harness.runtime.onServerAboutToStart(null)
+    harness.runtime.onServerStarting(null)
+    val thrown = assertThrows(classOf[IllegalStateException], () => harness.recoveryEvents.tick())
+    harness.recoveryEvents.tick()
+    harness.runtime.onServerStopping(null)
+    harness.runtime.onServerStopping(null)
+    harness.runtime.onServerStopped(null)
+    harness.runtime.onServerStopped(null)
+
+    val report = harness.runtime.latestStoppingReport.get
+    assertSame(recoveryFailure, thrown)
+    assertSame(stopFailure, recoveryFailure.getSuppressed.last)
+    assertEquals(1, recoveryFailure.getSuppressed.length)
+    assertTrue(report.controlledStopAttempted)
+    assertFalse(report.controlledStopSucceeded)
+    assertEquals(Some(stopFailure), report.controlledStopFailure)
+    assertEquals(Some(recoveryFailure), report.deferredFailure)
+    assertEquals(List(RecoveryExit.Blocked), harness.recovery.finishExits.toList)
+    assertEquals(1, harness.recoveryEvents.unregisterCalls)
+    assertEquals(1, harness.controlledStop.requests)
+    assertEquals(1, harness.events.count(_ == "finish:Blocked"))
+    assertEquals(1, harness.events.count(_ == "recovery-unregister"))
+    assertEquals(1, harness.events.count(_ == "controlled-stop"))
+    assertEquals(1, harness.events.count(_ == "repository-close"))
+    assertTrue(!harness.events.contains("persistence-start"))
+    assertTrue(!harness.events.contains("endpoint-install"))
 
   @Test
   def deferredAdvanceFailurePreservesCauseAndDoesNotRepeatTerminalActions(): Unit =
@@ -1007,3 +1210,25 @@ private final class DeferredControlledStop(events: ListBuffer[String], stopFailu
     requests += 1
     events += "controlled-stop"
     if stopFailure != null then throw stopFailure
+
+/** 仅供生命周期入口测试；未启用的能力明确失败，不产生虚假 Ready。 */
+private final class M5bNonDedicatedLifecycleServer(directory: Path, dedicated: Boolean = false)
+  extends MinecraftServer(directory.toFile, Proxy.NO_PROXY, new DataFixer(1343), null, null, null, null):
+  // super 构造时避免 ServerCommandManager 改写 CommandBase 的全局 listener。
+  override def createCommandManager(): ServerCommandManager = null
+  override def getCommandManager(): ICommandManager =
+    throw new UnsupportedOperationException("Lifecycle fixture has no command capability")
+  override def init(): Boolean =
+    throw new UnsupportedOperationException("Lifecycle fixture cannot start worlds")
+  override def shareToLAN(gameType: GameType, allowCheats: Boolean): String =
+    throw new UnsupportedOperationException("Lifecycle fixture cannot open LAN")
+  override def canStructuresSpawn(): Boolean = false
+  override def getGameType(): GameType = GameType.SURVIVAL
+  override def getDifficulty(): EnumDifficulty = EnumDifficulty.NORMAL
+  override def isHardcore(): Boolean = false
+  override def getOpPermissionLevel(): Int = 0
+  override def shouldBroadcastRconToOps(): Boolean = false
+  override def shouldBroadcastConsoleToOps(): Boolean = false
+  override def isDedicatedServer(): Boolean = dedicated
+  override def shouldUseNativeTransport(): Boolean = false
+  override def isCommandBlockEnabled(): Boolean = false

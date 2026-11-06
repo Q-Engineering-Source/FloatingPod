@@ -31,7 +31,8 @@ final case class FloatingPodState(
     pitch: Float,
     isActive: Boolean,
     lastUpdated: Long,
-    dimensionId: Option[Int] = None
+    dimensionId: Option[Int] = None,
+    operatingMode: PodOperatingMode = PodOperatingMode.Normal
 ):
   require(uuid != null, "uuid must not be null")
   require(ownerUuid != null, "ownerUuid must not be null")
@@ -45,4 +46,9 @@ final case class FloatingPodState(
   require(JavaFloat.isFinite(pitch), "pitch must be finite")
   require(lastUpdated >= 0L, "lastUpdated must not be negative")
   require(dimensionId != null, "dimensionId must not be null")
+  require(operatingMode != null, "operatingMode must not be null")
   require(!isActive || dimensionId.nonEmpty, "active state must have a dimensionId")
+  require(!isActive || ownerUuid.nonEmpty || operatingMode == PodOperatingMode.WorldIdle, "active unclaimed state must use WorldIdle")
+
+  /** 仅活动 WorldIdle 状态承担“原位留在世界”的恢复语义。 */
+  def isWorldResident: Boolean = isActive && operatingMode == PodOperatingMode.WorldIdle

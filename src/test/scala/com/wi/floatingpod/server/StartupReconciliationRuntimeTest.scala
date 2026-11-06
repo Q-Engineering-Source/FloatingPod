@@ -6,7 +6,7 @@ import com.wi.floatingpod.storage.sqlite.SQLiteFloatingPodRepository
 
 import net.minecraftforge.common.ForgeChunkManager
 import net.minecraftforge.common.ForgeChunkManager.Ticket
-import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertSame, assertTrue}
 import org.junit.jupiter.api.Test
 
 import java.nio.file.Files
@@ -60,6 +60,63 @@ class StartupReconciliationRuntimeTest:
         assertEquals(Some(committed), repository.findByUuid(podUuid).get)
         assertEquals(committed.stateVersion, repository.findByUuid(podUuid).get.get.stateVersion)
         assertEquals(committed.lastUpdated, repository.findByUuid(podUuid).get.get.lastUpdated)
+      finally repository.close()
+    finally
+      Files.deleteIfExists(database.resolveSibling("pods.db-shm"))
+      Files.deleteIfExists(database.resolveSibling("pods.db-wal"))
+      Files.deleteIfExists(database)
+      Files.deleteIfExists(directory)
+
+  @Test
+  def failedMultiRowPublicationKeepsAttachedBodyAndRollsBackOnlyBootMapping(): Unit =
+    val directory = Files.createTempDirectory("floatingpod-startup-reconciliation-abort")
+    val database = directory.resolve("pods.db")
+    val firstUuid = UUID.fromString("00000000-0000-0000-0000-000000001021")
+    val secondUuid = UUID.fromString("00000000-0000-0000-0000-000000001022")
+    val firstOwner = UUID.fromString("00000000-0000-0000-0000-000000001023")
+    val secondOwner = UUID.fromString("00000000-0000-0000-0000-000000001024")
+    val firstAttempt = UUID.fromString("00000000-0000-0000-0000-000000001025")
+    val secondAttempt = UUID.fromString("00000000-0000-0000-0000-000000001026")
+    val inactiveRows = List(
+      FloatingPodState(firstUuid, Some(firstOwner), 0L, "runtime-reconciliation", 32D, 64D, -16D, 0F, 0F, false, 123L, None),
+      FloatingPodState(secondUuid, Some(secondOwner), 0L, "runtime-reconciliation", 48D, 64D, -16D, 0F, 0F, false, 124L, None)
+    )
+
+    try
+      val bootstrap = new SQLiteFloatingPodRepository(database.toString)
+      val committed = try
+        inactiveRows.zip(List(firstAttempt, secondAttempt)).foreach { case (inactive, attempt) =>
+          assertTrue(bootstrap.insert(inactive).isSuccess)
+          assertTrue(bootstrap.prepareCreateLocator(inactive.uuid, inactive.stateVersion, attempt, 7, recoveryChunks(7, inactive.posX, inactive.posZ)).isSuccess)
+          assertTrue(bootstrap.activatePreparedIfAdmissible(inactive, inactive.ownerUuid.get, inactive.stateVersion, 7, 256, attempt).get.isInstanceOf[AdmissionOutcome.Accepted])
+        }
+        inactiveRows.map(state => bootstrap.findByUuid(state.uuid).get.get)
+      finally bootstrap.close()
+
+      val repository = new SQLiteFloatingPodRepository(database.toString)
+      try
+        val events = mutable.ListBuffer.empty[String]
+        val gateway = new RuntimeGateway(events)
+        val world = new RuntimeWorld(events)
+        world.failSpawnUuid = Some(secondUuid)
+        val tickets = new ChunkLoadingManager(repository, gateway)
+        val manager = new ActiveFloatingPodManager(repository, tickets)
+        world.managerUuids = () => manager.getAllActivePods().toSet
+        val sourceBody = world.seed(firstUuid)
+        val worlds = new ServerWorldResolver:
+          override def resolve(dimensionId: Int): Option[PodWorld] = if dimensionId == 7 then Some(world) else None
+
+        val failure = try
+          StartupReconciliation.forServer(repository, tickets, manager, worlds).decidePublication()
+          throw new AssertionError("Expected the second row spawn to fail")
+        catch case expected: IllegalStateException => expected
+
+        assertTrue(failure.getMessage.contains(secondUuid.toString))
+        assertSame(sourceBody, world.findPod(firstUuid).get)
+        assertEquals(Set(firstUuid), world.entityUuids)
+        assertTrue(manager.getAllActivePods().isEmpty)
+        assertEquals(Set(firstUuid, secondUuid), tickets.managedTicketRecords().keySet.toSet)
+        assertEquals(committed, inactiveRows.map(state => repository.findByUuid(state.uuid).get.get))
       finally repository.close()
     finally
       Files.deleteIfExists(database.resolveSibling("pods.db-shm"))
@@ -134,12 +191,17 @@ class StartupReconciliationRuntimeTest:
   private final class RuntimeWorld(events: mutable.ListBuffer[String]) extends PodWorld:
     private val entities = mutable.HashMap.empty[UUID, RuntimeEntity]
     var managerUuids: () => Set[UUID] = () => Set.empty
+    var failSpawnUuid = Option.empty[UUID]
 
     override val dimensionId: Int = 7
     override def diagnosticWorldName: String = "runtime-reconciliation-world"
     override def findPod(podUuid: UUID): Option[ActivePodEntity] = entities.get(podUuid)
+    override def isExactBodyResidentAndUnreplaced(body: ActivePodEntity): Boolean = body match
+      case entity: RuntimeEntity => entities.get(entity.podUuid).exists(_ eq entity)
+      case _ => false
     override def sameWorld(other: PodWorld): Boolean = this.eq(other)
     override def spawnPod(state: FloatingPodState): ActivePodEntity =
+      if failSpawnUuid.contains(state.uuid) then throw new IllegalStateException(s"Injected startup spawn failure for ${state.uuid}")
       if events.toList != List("ticket-request") then throw new AssertionError(s"ticket must be requested before entity spawn: $events")
       if managerUuids().nonEmpty then throw new AssertionError("manager must not publish before entity spawn")
       val entity = new RuntimeEntity(state.uuid, entities.size + 1)

@@ -36,7 +36,7 @@ final class PacketHandler(registrar: PacketRegistrar, scheduler: MainThreadSched
   require(scheduler != null, "scheduler must not be null")
   private var registered = false
 
-  /** 幂等注册当前五个消息；一旦成功注册，后续调用不重复占用 discriminator。 */
+  /** 幂等注册固定消息；原0..4的wire与discriminator保持不变。 */
   def registerOnce(): Unit = synchronized {
     if !registered then
       PacketHandler.registrations(scheduler).foreach(registrar.register)
@@ -45,7 +45,7 @@ final class PacketHandler(registrar: PacketRegistrar, scheduler: MainThreadSched
 
 object PacketHandler:
   /** 当前公共 payload 的固定协议版本。 */
-  final val PROTOCOL_VERSION: Int = 1
+  final val PROTOCOL_VERSION: Int = 2
   /** Forge channel 的稳定名称。 */
   final val CHANNEL_NAME: String = "floatingpod"
 
@@ -58,11 +58,17 @@ object PacketHandler:
     PacketRegistration(classOf[C2SRecallRequest], 1, Side.SERVER, new C2SRecallHandler(scheduler, ServerPacketRuntime)),
     PacketRegistration(classOf[S2CStateSync], 2, Side.CLIENT, new S2CStateSyncHandler()),
     PacketRegistration(classOf[S2CReleaseResult], 3, Side.CLIENT, new S2CReleaseResultHandler()),
-    PacketRegistration(classOf[S2CRecallResult], 4, Side.CLIENT, new S2CRecallResultHandler())
+    PacketRegistration(classOf[S2CRecallResult], 4, Side.CLIENT, new S2CRecallResultHandler()),
+    PacketRegistration(classOf[C2SRecallOperationRequest], 5, Side.SERVER, new C2SRecallOperationHandler(scheduler, ServerPacketRuntime)),
+    PacketRegistration(classOf[S2CRecallOperationStatus], 6, Side.CLIENT, new S2CRecallOperationStatusHandler())
   )
 
   /** 在 Mod 预初始化时注册一次真实 channel。 */
   def initialize(): Unit = productionHandler.registerOnce()
+
+  private[floatingpod] def sendRecallOperation(message: C2SRecallOperationRequest): Unit =
+    require(message != null, "correlated recall required")
+    productionChannel.sendToServer(message)
 
   /** 服务器 endpoint 的最小 channel 发送入口；不暴露 channel 或注册表可变状态。 */
   private[network] def sendTo(message: IMessage, player: EntityPlayerMP): Unit =

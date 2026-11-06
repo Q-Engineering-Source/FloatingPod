@@ -18,6 +18,8 @@ object ForgeMainThreadScheduler extends MainThreadScheduler:
 trait ServerPacketEndpoint:
   def receiveRelease(message: C2SReleaseRequest, context: MessageContext): Unit
   def receiveRecall(message: C2SRecallRequest, context: MessageContext): Unit
+  def receiveRecallOperation(message: C2SRecallOperationRequest, context: MessageContext): Unit =
+    throw new IllegalStateException("Correlated recall endpoint is not installed")
 
 /** 未安装运行时 processor 时的默认入口，任务执行时立即失败而不改变状态。 */
 object UnavailableServerPacketEndpoint extends ServerPacketEndpoint:
@@ -43,8 +45,15 @@ object ServerPacketRuntime extends ServerPacketEndpoint:
   /** 卸载当前入口；后续已排程请求会再次以 fail-closed 语义解析。 */
   def uninstall(): Unit = synchronized { installed = None }
 
+  /** schema6 owner只撤自己的入口；失败清理不得卸掉后继或其他runtime。 */
+  private[floatingpod] def uninstall(endpoint: ServerPacketEndpoint): Unit = synchronized {
+    require(endpoint != null && installed.exists(_ eq endpoint), "original installed packet endpoint required")
+    installed = None
+  }
+
   override def receiveRelease(message: C2SReleaseRequest, context: MessageContext): Unit = current.receiveRelease(message, context)
   override def receiveRecall(message: C2SRecallRequest, context: MessageContext): Unit = current.receiveRecall(message, context)
+  override def receiveRecallOperation(message: C2SRecallOperationRequest, context: MessageContext): Unit = current.receiveRecallOperation(message, context)
 
   private def current: ServerPacketEndpoint = installed.getOrElse(UnavailableServerPacketEndpoint)
 
@@ -56,6 +65,12 @@ trait ClientPacketSink:
 
 /** 保存最近网络消息的公共安全 sink，供未来客户端装配按需读取。 */
 object ClientNetworkState extends ClientPacketSink:
+  private var recallStatusConsumer: S2CRecallOperationStatus => Unit = _ =>
+    throw new IllegalStateException("Actual client recall consumer is not installed")
+  private[floatingpod] def installRecallStatusConsumer(consumer: S2CRecallOperationStatus => Unit): Unit =
+    require(consumer != null, "actual client recall consumer required")
+    recallStatusConsumer = consumer
+  private[network] def receiveRecallOperationStatus(message: S2CRecallOperationStatus): Unit = recallStatusConsumer(message)
   @volatile var latestStateSync: Option[S2CStateSync] = None
   @volatile var latestReleaseResult: Option[S2CReleaseResult] = None
   @volatile var latestRecallResult: Option[S2CRecallResult] = None
@@ -75,6 +90,18 @@ final class C2SRecallHandler(scheduler: MainThreadScheduler, endpoint: ServerPac
   def this() = this(ForgeMainThreadScheduler, ServerPacketRuntime)
   override def onMessage(message: C2SRecallRequest, context: MessageContext): IMessage =
     scheduler.schedule(context, new Runnable { override def run(): Unit = endpoint.receiveRecall(message, context) })
+    null
+
+final class C2SRecallOperationHandler(scheduler: MainThreadScheduler, endpoint: ServerPacketEndpoint) extends IMessageHandler[C2SRecallOperationRequest, IMessage]:
+  override def onMessage(message: C2SRecallOperationRequest, context: MessageContext): IMessage =
+    scheduler.schedule(context, new Runnable { override def run(): Unit = endpoint.receiveRecallOperation(message, context) })
+    null
+
+final class S2CRecallOperationStatusHandler extends IMessageHandler[S2CRecallOperationStatus, IMessage]:
+  override def onMessage(message: S2CRecallOperationStatus, context: MessageContext): IMessage =
+    ForgeMainThreadScheduler.schedule(context, new Runnable {
+      override def run(): Unit = ClientNetworkState.receiveRecallOperationStatus(message)
+    })
     null
 
 /** 延迟 S2C StateSync sink 更新。 */

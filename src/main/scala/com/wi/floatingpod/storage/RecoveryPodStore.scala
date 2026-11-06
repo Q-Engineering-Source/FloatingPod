@@ -1,6 +1,6 @@
 package com.wi.floatingpod.storage
 
-import com.wi.floatingpod.domain.FloatingPodState
+import com.wi.floatingpod.domain.{FloatingPodState, PodOperatingMode}
 
 import java.util.UUID
 import scala.util.Try
@@ -48,11 +48,13 @@ private[floatingpod] final case class StoredPodRow(
     pitch: Float,
     isActive: Boolean,
     lastUpdated: Long,
-    dimensionId: Option[Int]
+    dimensionId: Option[Int],
+    operatingMode: PodOperatingMode = PodOperatingMode.Normal
 ):
   require(uuid != null, "uuid must not be null")
   require(ownerUuid != null, "ownerUuid must not be null")
   require(dimensionId != null, "dimensionId must not be null")
+  require(operatingMode != null, "operatingMode must not be null")
 
   /** 仅在公开领域不变量满足时构造领域状态。 */
   def toPublicState: FloatingPodState =
@@ -70,7 +72,8 @@ private[floatingpod] final case class StoredPodRow(
       pitch,
       isActive,
       lastUpdated,
-      dimensionId
+      dimensionId,
+      operatingMode
     )
 
 /** 回填活动维度时的稳定结果。 */

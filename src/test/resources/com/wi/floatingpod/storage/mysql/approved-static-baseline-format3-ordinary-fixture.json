@@ -1,0 +1,2832 @@
+{
+  "fp_schema_manifest": {
+    "cols": [
+      [
+        "singleton_fixed1",
+        "TINYINT NOT NULL"
+      ],
+      [
+        "backend",
+        "VARCHAR(8) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "format_version",
+        "INT NOT NULL"
+      ],
+      [
+        "ddl_sha256",
+        "VARBINARY(32) NOT NULL"
+      ],
+      [
+        "provisioning_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "bootstrap_state",
+        "VARCHAR(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "expected_server_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "expected_binding_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "import_manifest_sha256",
+        "VARBINARY(32) NULL"
+      ],
+      [
+        "import_state",
+        "VARCHAR(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "import_operation_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "import_snapshot_sha256",
+        "VARBINARY(32) NULL"
+      ],
+      [
+        "import_receipt_sha256",
+        "VARBINARY(32) NULL"
+      ],
+      [
+        "guard_manifest_sha256",
+        "VARBINARY(32) NULL"
+      ],
+      [
+        "configuration_sha256",
+        "VARBINARY(32) NOT NULL"
+      ],
+      [
+        "source_provenance_kind",
+        "VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "source_provenance_bytes",
+        "LONGBLOB NOT NULL"
+      ],
+      [
+        "source_provenance_sha256",
+        "VARBINARY(32) NOT NULL"
+      ],
+      [
+        "limit_profile_encoding",
+        "VARCHAR(48) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "limit_profile_bytes",
+        "LONGBLOB NOT NULL"
+      ],
+      [
+        "limit_profile_sha256",
+        "VARBINARY(32) NOT NULL"
+      ],
+      [
+        "max_region_bytes",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "max_chunk_bytes",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "max_decompressed_bytes",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "max_nbt_depth",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "max_members",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "max_retained_bytes",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "max_sql_packet_bytes",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "max_native_artifact_bytes",
+        "BIGINT NOT NULL"
+      ]
+    ],
+    "pk": [
+      "singleton_fixed1"
+    ],
+    "checks": [
+      "singleton_fixed1=1",
+      "backend='MYSQL'",
+      "format_version=3",
+      "bootstrap_state IN ('BOOTSTRAPPING','READY')",
+      "import_state IN ('NONE','PENDING','COMMITTED')",
+      "source_provenance_kind IN ('FRESH_PLAN','FORMAT3_RESTORE','FORMAT2_IMPORT','SQLITE_IMPORT')",
+      "limit_profile_encoding='FP_SOURCE_LIMIT_PROFILE_BE_V1'",
+      "(import_state='NONE' AND import_manifest_sha256 IS NULL AND import_operation_uuid IS NULL AND import_snapshot_sha256 IS NULL AND import_receipt_sha256 IS NULL) OR (import_state='PENDING' AND import_manifest_sha256 IS NOT NULL AND import_operation_uuid IS NOT NULL AND import_snapshot_sha256 IS NOT NULL AND import_receipt_sha256 IS NULL) OR (import_state='COMMITTED' AND import_manifest_sha256 IS NOT NULL AND import_operation_uuid IS NOT NULL AND import_snapshot_sha256 IS NOT NULL AND import_receipt_sha256 IS NOT NULL)",
+      "bootstrap_state<>'READY' OR (guard_manifest_sha256 IS NOT NULL AND import_state IN ('NONE','COMMITTED'))",
+      "max_region_bytes>0",
+      "max_chunk_bytes>0",
+      "max_decompressed_bytes>0",
+      "max_nbt_depth>0",
+      "max_members>0",
+      "max_retained_bytes>0",
+      "max_sql_packet_bytes>0",
+      "max_native_artifact_bytes>0"
+    ],
+    "uniques": [],
+    "fks": [],
+    "indices": [],
+    "methodSection": "2,10,11,12,13"
+  },
+  "fp_runtime_writer": {
+    "cols": [
+      [
+        "singleton_fixed1",
+        "TINYINT NOT NULL"
+      ],
+      [
+        "binding_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "writer_epoch",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "owner_boot_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "lease_until",
+        "DATETIME(6) NOT NULL"
+      ],
+      [
+        "last_commit_operation_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "last_commit_fingerprint",
+        "VARBINARY(32) NULL"
+      ]
+    ],
+    "pk": [
+      "singleton_fixed1"
+    ],
+    "checks": [
+      "singleton_fixed1=1",
+      "((last_commit_operation_uuid IS NULL AND last_commit_fingerprint IS NULL) OR (last_commit_operation_uuid IS NOT NULL AND last_commit_fingerprint IS NOT NULL))"
+    ],
+    "uniques": [],
+    "fks": [],
+    "indices": [],
+    "methodSection": "3,6,11"
+  },
+  "physical_recovery_binding": {
+    "cols": [
+      [
+        "singleton_fixed1",
+        "TINYINT NOT NULL"
+      ],
+      [
+        "binding_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "cutover_state",
+        "VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "format_version",
+        "INT NOT NULL"
+      ]
+    ],
+    "pk": [
+      "singleton_fixed1"
+    ],
+    "checks": [
+      "singleton_fixed1=1",
+      "cutover_state IN ('LEGACY_UNCERTIFIED','CERTIFIED')",
+      "format_version=2"
+    ],
+    "uniques": [
+      [
+        "ux_binding_uuid",
+        [
+          "binding_uuid"
+        ]
+      ]
+    ],
+    "fks": [],
+    "indices": [],
+    "methodSection": "2,12"
+  },
+  "fp_recovery_operation": {
+    "cols": [
+      [
+        "binding_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "operation_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "workflow_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "step",
+        "VARCHAR(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "operation_state",
+        "VARCHAR(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "pod_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "attempt_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "footprint_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "source_unit_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "forest_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "boot_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "boot_generation",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "connection_generation_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "connection_id",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "fence_epoch",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "request_identity_bytes",
+        "LONGBLOB NOT NULL"
+      ],
+      [
+        "request_identity_sha256",
+        "VARBINARY(32) NOT NULL"
+      ],
+      [
+        "expected_domain_version",
+        "BIGINT NULL"
+      ],
+      [
+        "expected_locator_revision",
+        "BIGINT NULL"
+      ],
+      [
+        "expected_source_revision",
+        "BIGINT NULL"
+      ],
+      [
+        "context_encoding",
+        "VARCHAR(48) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "original_context_bytes",
+        "LONGBLOB NOT NULL"
+      ],
+      [
+        "original_context_sha256",
+        "VARBINARY(32) NOT NULL"
+      ],
+      [
+        "scope_bytes",
+        "LONGBLOB NOT NULL"
+      ],
+      [
+        "scope_sha256",
+        "VARBINARY(32) NOT NULL"
+      ],
+      [
+        "preimage_bytes",
+        "LONGBLOB NOT NULL"
+      ],
+      [
+        "preimage_sha256",
+        "VARBINARY(32) NOT NULL"
+      ],
+      [
+        "target_bytes",
+        "LONGBLOB NOT NULL"
+      ],
+      [
+        "target_sha256",
+        "VARBINARY(32) NOT NULL"
+      ],
+      [
+        "reserve_operation_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "previous_step_operation_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "settled_by_operation_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "commit_witness_bytes",
+        "LONGBLOB NULL"
+      ],
+      [
+        "commit_witness_sha256",
+        "VARBINARY(32) NULL"
+      ],
+      [
+        "original_diagnostic_sha256",
+        "VARBINARY(32) NULL"
+      ],
+      [
+        "original_diagnostic_identity",
+        "LONGBLOB NULL"
+      ],
+      [
+        "planned_at",
+        "DATETIME(6) NOT NULL"
+      ],
+      [
+        "fixed_lease_until",
+        "DATETIME(6) NOT NULL"
+      ],
+      [
+        "result_at",
+        "DATETIME(6) NULL"
+      ],
+      [
+        "operation_fingerprint",
+        "VARBINARY(32) NOT NULL"
+      ]
+    ],
+    "pk": [
+      "binding_uuid",
+      "operation_uuid"
+    ],
+    "checks": [
+      "step IN ('RESERVE','CANCEL','ENTITLEMENT_REGISTER','DOMAIN_MUTATION','REARM','ACTIVATE','RECALL_CHECKPOINT','ABORT_CLEANUP','MOVE_PREPARE','MOVE_COMMIT','MOVE_CLEANUP','MOVE_REMEDIATE','SOURCE_CAPTURE','SOURCE_PREPARE','SOURCE_WRITE_PREPARE','SOURCE_WRITE_RESULT','SOURCE_WRITE_RECONCILE','SOURCE_CUTOVER','SOURCE_RETIRE','SOURCE_REMEDIATE','RESERVATION_RELEASE')",
+      "operation_state IN ('RESERVED','COMMITTED','CANCELLED')",
+      "context_encoding='FP_RECOVERY_OPERATION_BE_V1'",
+      "boot_generation>0",
+      "connection_id>0",
+      "((original_diagnostic_sha256 IS NULL AND original_diagnostic_identity IS NULL) OR (original_diagnostic_sha256 IS NOT NULL AND original_diagnostic_identity IS NOT NULL))",
+      "(operation_state='RESERVED' AND result_at IS NULL AND settled_by_operation_uuid IS NULL AND commit_witness_bytes IS NULL AND commit_witness_sha256 IS NULL) OR (operation_state='COMMITTED' AND result_at IS NOT NULL AND settled_by_operation_uuid IS NULL AND commit_witness_bytes IS NOT NULL AND commit_witness_sha256 IS NOT NULL) OR (operation_state='CANCELLED' AND result_at IS NOT NULL AND settled_by_operation_uuid IS NOT NULL AND commit_witness_bytes IS NOT NULL AND commit_witness_sha256 IS NOT NULL)",
+      "reserve_operation_uuid IS NULL OR reserve_operation_uuid<>operation_uuid",
+      "previous_step_operation_uuid IS NULL OR previous_step_operation_uuid<>operation_uuid",
+      "settled_by_operation_uuid IS NULL OR settled_by_operation_uuid<>operation_uuid",
+      "original_diagnostic_identity IS NULL OR original_diagnostic_sha256=UNHEX(SHA2(original_diagnostic_identity,256))"
+    ],
+    "uniques": [],
+    "fks": [
+      [
+        "fk_op_binding",
+        [
+          "binding_uuid"
+        ],
+        "physical_recovery_binding",
+        [
+          "binding_uuid"
+        ]
+      ],
+      [
+        "fk_op_reserve",
+        [
+          "binding_uuid",
+          "reserve_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ],
+      [
+        "fk_op_previous",
+        [
+          "binding_uuid",
+          "previous_step_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ],
+      [
+        "fk_op_settled",
+        [
+          "binding_uuid",
+          "settled_by_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ]
+    ],
+    "indices": [
+      [
+        "ix_op_workflow",
+        [
+          "binding_uuid",
+          "workflow_uuid",
+          "step"
+        ]
+      ]
+    ],
+    "methodSection": "6"
+  },
+  "floating_pod_state": {
+    "cols": [
+      [
+        "uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "owner_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "state_version",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "world_name",
+        "LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "pos_x",
+        "DOUBLE NOT NULL"
+      ],
+      [
+        "pos_y",
+        "DOUBLE NOT NULL"
+      ],
+      [
+        "pos_z",
+        "DOUBLE NOT NULL"
+      ],
+      [
+        "yaw",
+        "DOUBLE NOT NULL"
+      ],
+      [
+        "pitch",
+        "DOUBLE NOT NULL"
+      ],
+      [
+        "is_active",
+        "TINYINT NOT NULL"
+      ],
+      [
+        "last_updated",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "dimension_id",
+        "INT NULL"
+      ],
+      [
+        "operating_mode",
+        "VARCHAR(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "binding_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "last_mutation_operation_uuid",
+        "VARBINARY(16) NOT NULL"
+      ]
+    ],
+    "pk": [
+      "uuid"
+    ],
+    "checks": [
+      "is_active IN (0,1)",
+      "operating_mode IN ('NORMAL','WORLD_IDLE')",
+      "owner_uuid IS NOT NULL OR is_active=0 OR operating_mode='WORLD_IDLE'",
+      "ABS(pos_x) < 1.0e300",
+      "ABS(pos_y) < 1.0e300",
+      "ABS(pos_z) < 1.0e300",
+      "ABS(yaw) < 1.0e30",
+      "ABS(pitch) < 1.0e30"
+    ],
+    "uniques": [],
+    "fks": [
+      [
+        "fk_domain_binding",
+        [
+          "binding_uuid"
+        ],
+        "physical_recovery_binding",
+        [
+          "binding_uuid"
+        ]
+      ],
+      [
+        "fk_domain_mutation",
+        [
+          "binding_uuid",
+          "last_mutation_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ]
+    ],
+    "indices": [
+      [
+        "ix_domain_owner",
+        [
+          "owner_uuid"
+        ]
+      ],
+      [
+        "ix_domain_active",
+        [
+          "is_active"
+        ]
+      ],
+      [
+        "ix_domain_updated",
+        [
+          "last_updated"
+        ]
+      ],
+      [
+        "ix_domain_owner_active",
+        [
+          "owner_uuid",
+          "is_active"
+        ]
+      ]
+    ],
+    "methodSection": "5,7,8"
+  },
+  "player_entitlement": {
+    "cols": [
+      [
+        "player_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "registration_limit",
+        "INT NOT NULL"
+      ],
+      [
+        "simultaneous_active_limit",
+        "INT NOT NULL"
+      ],
+      [
+        "binding_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "created_operation_uuid",
+        "VARBINARY(16) NOT NULL"
+      ]
+    ],
+    "pk": [
+      "player_uuid"
+    ],
+    "checks": [
+      "registration_limit>=0",
+      "simultaneous_active_limit>=0"
+    ],
+    "uniques": [],
+    "fks": [
+      [
+        "fk_entitlement_binding",
+        [
+          "binding_uuid"
+        ],
+        "physical_recovery_binding",
+        [
+          "binding_uuid"
+        ]
+      ],
+      [
+        "fk_entitlement_created",
+        [
+          "binding_uuid",
+          "created_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ]
+    ],
+    "indices": [],
+    "methodSection": "4,5"
+  },
+  "binding_bootstrap_intent": {
+    "cols": [
+      [
+        "singleton_fixed1",
+        "TINYINT NOT NULL"
+      ],
+      [
+        "bootstrap_operation_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "prepare_write_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "certify_write_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "binding_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "binding_format_version",
+        "INT NOT NULL"
+      ],
+      [
+        "provisioning_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "source_world_identity",
+        "LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "provision_receipt_sha256",
+        "VARBINARY(32) NOT NULL"
+      ],
+      [
+        "stage",
+        "VARCHAR(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "marker_ack_sha256",
+        "VARBINARY(32) NULL"
+      ]
+    ],
+    "pk": [
+      "singleton_fixed1"
+    ],
+    "checks": [
+      "singleton_fixed1=1",
+      "prepare_write_uuid<>certify_write_uuid",
+      "binding_format_version=2",
+      "stage IN ('PREPARED','COMPLETE')",
+      "(stage='PREPARED' AND marker_ack_sha256 IS NULL) OR (stage='COMPLETE' AND marker_ack_sha256 IS NOT NULL)"
+    ],
+    "uniques": [],
+    "fks": [],
+    "indices": [],
+    "methodSection": "2,12"
+  },
+  "fp_recovery_reservation": {
+    "cols": [
+      [
+        "binding_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "resource_kind",
+        "VARCHAR(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "resource_key_hash",
+        "VARBINARY(32) NOT NULL"
+      ],
+      [
+        "resource_key",
+        "LONGBLOB NOT NULL"
+      ],
+      [
+        "reservation_revision",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "workflow_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "operation_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "reservation_state",
+        "VARCHAR(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "last_mutation_operation_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "resource_pod_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "resource_unit_uuid",
+        "VARBINARY(16) NULL"
+      ]
+    ],
+    "pk": [
+      "binding_uuid",
+      "resource_kind",
+      "resource_key_hash"
+    ],
+    "checks": [
+      "resource_kind IN ('POD','SOURCE_UNIT','CARRIER')",
+      "reservation_state IN ('HELD','RELEASED')",
+      "resource_key_hash=UNHEX(SHA2(resource_key,256))",
+      "(resource_kind='POD' AND resource_pod_uuid IS NOT NULL AND resource_unit_uuid IS NULL) OR (resource_kind='SOURCE_UNIT' AND resource_pod_uuid IS NULL AND resource_unit_uuid IS NOT NULL) OR (resource_kind='CARRIER' AND resource_pod_uuid IS NULL AND resource_unit_uuid IS NULL)"
+    ],
+    "uniques": [
+      [
+        "ux_reservation_pod",
+        [
+          "binding_uuid",
+          "resource_kind",
+          "resource_pod_uuid"
+        ]
+      ],
+      [
+        "ux_reservation_unit",
+        [
+          "binding_uuid",
+          "resource_kind",
+          "resource_unit_uuid"
+        ]
+      ]
+    ],
+    "fks": [
+      [
+        "fk_reservation_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ],
+      [
+        "fk_reservation_mutation",
+        [
+          "binding_uuid",
+          "last_mutation_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ]
+    ],
+    "indices": [],
+    "methodSection": "6"
+  },
+  "physical_recovery_footprint": {
+    "cols": [
+      [
+        "binding_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "pod_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "attempt_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "footprint_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "origin_version",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "target_world_name",
+        "LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "target_pos_x",
+        "DOUBLE NOT NULL"
+      ],
+      [
+        "target_pos_y",
+        "DOUBLE NOT NULL"
+      ],
+      [
+        "target_pos_z",
+        "DOUBLE NOT NULL"
+      ],
+      [
+        "target_yaw",
+        "DOUBLE NOT NULL"
+      ],
+      [
+        "target_pitch",
+        "DOUBLE NOT NULL"
+      ],
+      [
+        "target_dimension_id",
+        "INT NOT NULL"
+      ],
+      [
+        "center_chunk_x",
+        "INT NOT NULL"
+      ],
+      [
+        "center_chunk_z",
+        "INT NOT NULL"
+      ],
+      [
+        "purpose",
+        "VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "seal_state",
+        "VARCHAR(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "created_operation_uuid",
+        "VARBINARY(16) NOT NULL"
+      ]
+    ],
+    "pk": [
+      "binding_uuid",
+      "pod_uuid",
+      "attempt_uuid",
+      "footprint_uuid"
+    ],
+    "checks": [
+      "purpose IN ('CREATE_TARGET','MOVE_TARGET','MIGRATED_UNVERIFIED')",
+      "seal_state IN ('DRAFT','SEALED')",
+      "ABS(target_pos_x) < 1.0e300",
+      "ABS(target_pos_y) < 1.0e300",
+      "ABS(target_pos_z) < 1.0e300",
+      "ABS(target_yaw) < 1.0e30",
+      "ABS(target_pitch) < 1.0e30",
+      "center_chunk_x=FLOOR(target_pos_x/16)",
+      "center_chunk_z=FLOOR(target_pos_z/16)",
+      "center_chunk_x BETWEEN -2147483646 AND 2147483645",
+      "center_chunk_z BETWEEN -2147483646 AND 2147483645"
+    ],
+    "uniques": [],
+    "fks": [
+      [
+        "fk_footprint_domain",
+        [
+          "pod_uuid"
+        ],
+        "floating_pod_state",
+        [
+          "uuid"
+        ]
+      ],
+      [
+        "fk_footprint_binding",
+        [
+          "binding_uuid"
+        ],
+        "physical_recovery_binding",
+        [
+          "binding_uuid"
+        ]
+      ],
+      [
+        "fk_footprint_created",
+        [
+          "binding_uuid",
+          "created_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ]
+    ],
+    "indices": [],
+    "methodSection": "5,8,11"
+  },
+  "physical_recovery_footprint_chunk": {
+    "cols": [
+      [
+        "binding_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "pod_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "attempt_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "footprint_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "dimension_id",
+        "INT NOT NULL"
+      ],
+      [
+        "chunk_x",
+        "INT NOT NULL"
+      ],
+      [
+        "chunk_z",
+        "INT NOT NULL"
+      ]
+    ],
+    "pk": [
+      "binding_uuid",
+      "pod_uuid",
+      "attempt_uuid",
+      "footprint_uuid",
+      "dimension_id",
+      "chunk_x",
+      "chunk_z"
+    ],
+    "checks": [],
+    "uniques": [],
+    "fks": [
+      [
+        "fk_chunk_footprint",
+        [
+          "binding_uuid",
+          "pod_uuid",
+          "attempt_uuid",
+          "footprint_uuid"
+        ],
+        "physical_recovery_footprint",
+        [
+          "binding_uuid",
+          "pod_uuid",
+          "attempt_uuid",
+          "footprint_uuid"
+        ]
+      ]
+    ],
+    "indices": [],
+    "methodSection": "5,8,11"
+  },
+  "physical_recovery_intent": {
+    "cols": [
+      [
+        "binding_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "pod_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "attempt_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "origin",
+        "VARCHAR(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "phase",
+        "VARCHAR(24) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "target_footprint_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "prepare_operation_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "expected_owner_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "expected_domain_version",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "predecessor_attempt_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "predecessor_footprint_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "source_completion_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "fresh_absence_proof_bytes",
+        "LONGBLOB NULL"
+      ],
+      [
+        "fresh_absence_proof_sha256",
+        "VARBINARY(32) NULL"
+      ],
+      [
+        "source_kind",
+        "VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NULL"
+      ],
+      [
+        "source_identity",
+        "LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NULL"
+      ],
+      [
+        "source_identity_sha256",
+        "VARBINARY(32) GENERATED ALWAYS AS (UNHEX(SHA2(CAST(source_identity AS BINARY),256))) STORED"
+      ],
+      [
+        "catalog_generation",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "create_operation_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "source_unit_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "source_forest_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "activation_operation_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "committed_domain_version",
+        "BIGINT NULL"
+      ],
+      [
+        "committed_at",
+        "BIGINT NULL"
+      ],
+      [
+        "committed_world_name",
+        "LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NULL"
+      ],
+      [
+        "committed_pos_x",
+        "DOUBLE NULL"
+      ],
+      [
+        "committed_pos_y",
+        "DOUBLE NULL"
+      ],
+      [
+        "committed_pos_z",
+        "DOUBLE NULL"
+      ],
+      [
+        "committed_yaw",
+        "DOUBLE NULL"
+      ],
+      [
+        "committed_pitch",
+        "DOUBLE NULL"
+      ],
+      [
+        "committed_dimension_id",
+        "INT NULL"
+      ],
+      [
+        "cleanup_operation_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "cleanup_proof_bytes",
+        "LONGBLOB NULL"
+      ],
+      [
+        "cleanup_proof_sha256",
+        "VARBINARY(32) NULL"
+      ],
+      [
+        "intent_revision",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "last_mutation_operation_uuid",
+        "VARBINARY(16) NOT NULL"
+      ]
+    ],
+    "pk": [
+      "binding_uuid",
+      "pod_uuid",
+      "attempt_uuid"
+    ],
+    "checks": [
+      "origin IN ('UNBOUND_ADOPTION','DEBUG_ITEM_CREATE','OWNED_RELEASE','REARM_AFTER_RECALL','REARM_AFTER_ABORT_CLEANUP','REARM_AFTER_FRESH_ABSENCE')",
+      "phase IN ('PREPARED','ACTIVATED','CLEANUP_PENDING','CLEANUP_VERIFIED')",
+      "((predecessor_attempt_uuid IS NULL AND predecessor_footprint_uuid IS NULL) OR (predecessor_attempt_uuid IS NOT NULL AND predecessor_footprint_uuid IS NOT NULL))",
+      "((source_unit_uuid IS NULL AND source_forest_uuid IS NULL) OR (source_unit_uuid IS NOT NULL AND source_forest_uuid IS NOT NULL))",
+      "((fresh_absence_proof_bytes IS NULL AND fresh_absence_proof_sha256 IS NULL) OR (fresh_absence_proof_bytes IS NOT NULL AND fresh_absence_proof_sha256 IS NOT NULL))",
+      "((cleanup_proof_bytes IS NULL AND cleanup_proof_sha256 IS NULL) OR (cleanup_proof_bytes IS NOT NULL AND cleanup_proof_sha256 IS NOT NULL))",
+      "origin NOT IN ('UNBOUND_ADOPTION','DEBUG_ITEM_CREATE') OR expected_domain_version=0",
+      "origin<>'UNBOUND_ADOPTION' OR (source_kind IS NOT NULL AND source_kind IN ('FRESH','LEGACY_UNREGISTERED') AND source_identity IS NOT NULL AND catalog_generation IS NOT NULL AND create_operation_uuid IS NULL)",
+      "origin<>'DEBUG_ITEM_CREATE' OR (source_kind IS NULL AND source_identity IS NULL AND catalog_generation IS NULL AND create_operation_uuid IS NOT NULL)",
+      "origin NOT IN ('REARM_AFTER_RECALL','REARM_AFTER_ABORT_CLEANUP') OR (source_completion_uuid IS NOT NULL AND predecessor_attempt_uuid IS NOT NULL AND predecessor_footprint_uuid IS NOT NULL AND fresh_absence_proof_bytes IS NULL)",
+      "origin<>'REARM_AFTER_FRESH_ABSENCE' OR (fresh_absence_proof_bytes IS NOT NULL AND fresh_absence_proof_sha256 IS NOT NULL AND source_completion_uuid IS NULL AND predecessor_attempt_uuid IS NOT NULL AND predecessor_footprint_uuid IS NOT NULL)",
+      "origin<>'OWNED_RELEASE' OR expected_owner_uuid IS NOT NULL",
+      "(phase<>'ACTIVATED' AND activation_operation_uuid IS NULL AND committed_domain_version IS NULL AND committed_at IS NULL AND committed_world_name IS NULL AND committed_pos_x IS NULL AND committed_pos_y IS NULL AND committed_pos_z IS NULL AND committed_yaw IS NULL AND committed_pitch IS NULL AND committed_dimension_id IS NULL) OR (phase='ACTIVATED' AND activation_operation_uuid IS NOT NULL AND committed_domain_version IS NOT NULL AND committed_domain_version=expected_domain_version+1 AND committed_at IS NOT NULL AND committed_world_name IS NOT NULL AND committed_pos_x IS NOT NULL AND committed_pos_y IS NOT NULL AND committed_pos_z IS NOT NULL AND committed_yaw IS NOT NULL AND committed_pitch IS NOT NULL AND committed_dimension_id IS NOT NULL)",
+      "phase<>'CLEANUP_VERIFIED' OR (cleanup_operation_uuid IS NOT NULL AND cleanup_proof_bytes IS NOT NULL AND cleanup_proof_sha256 IS NOT NULL)",
+      "committed_pos_x IS NULL OR ABS(committed_pos_x) < 1.0e300",
+      "committed_pos_y IS NULL OR ABS(committed_pos_y) < 1.0e300",
+      "committed_pos_z IS NULL OR ABS(committed_pos_z) < 1.0e300",
+      "committed_yaw IS NULL OR ABS(committed_yaw) < 1.0e30",
+      "committed_pitch IS NULL OR ABS(committed_pitch) < 1.0e30",
+      "origin IN ('REARM_AFTER_RECALL','REARM_AFTER_ABORT_CLEANUP') OR source_completion_uuid IS NULL",
+      "origin='REARM_AFTER_FRESH_ABSENCE' OR fresh_absence_proof_bytes IS NULL",
+      "origin IN ('REARM_AFTER_RECALL','REARM_AFTER_ABORT_CLEANUP','REARM_AFTER_FRESH_ABSENCE') OR predecessor_attempt_uuid IS NULL",
+      "origin='UNBOUND_ADOPTION' OR (source_kind IS NULL AND source_identity IS NULL AND catalog_generation IS NULL)",
+      "origin='DEBUG_ITEM_CREATE' OR create_operation_uuid IS NULL",
+      "phase='CLEANUP_VERIFIED' OR cleanup_proof_bytes IS NULL",
+      "phase IN ('CLEANUP_PENDING','CLEANUP_VERIFIED') OR cleanup_operation_uuid IS NULL"
+    ],
+    "uniques": [
+      [
+        "ux_intent_source",
+        [
+          "binding_uuid",
+          "source_kind",
+          "catalog_generation",
+          "source_identity_sha256"
+        ]
+      ],
+      [
+        "ux_intent_create",
+        [
+          "binding_uuid",
+          "create_operation_uuid"
+        ]
+      ],
+      [
+        "ux_intent_completion",
+        [
+          "binding_uuid",
+          "source_completion_uuid"
+        ]
+      ]
+    ],
+    "fks": [
+      [
+        "fk_intent_target",
+        [
+          "binding_uuid",
+          "pod_uuid",
+          "attempt_uuid",
+          "target_footprint_uuid"
+        ],
+        "physical_recovery_footprint",
+        [
+          "binding_uuid",
+          "pod_uuid",
+          "attempt_uuid",
+          "footprint_uuid"
+        ]
+      ],
+      [
+        "fk_intent_predecessor",
+        [
+          "binding_uuid",
+          "pod_uuid",
+          "predecessor_attempt_uuid",
+          "predecessor_footprint_uuid"
+        ],
+        "physical_recovery_footprint",
+        [
+          "binding_uuid",
+          "pod_uuid",
+          "attempt_uuid",
+          "footprint_uuid"
+        ]
+      ],
+      [
+        "fk_intent_prepare",
+        [
+          "binding_uuid",
+          "prepare_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ],
+      [
+        "fk_intent_activation",
+        [
+          "binding_uuid",
+          "activation_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ],
+      [
+        "fk_intent_cleanup",
+        [
+          "binding_uuid",
+          "cleanup_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ],
+      [
+        "fk_intent_mutation",
+        [
+          "binding_uuid",
+          "last_mutation_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ]
+    ],
+    "indices": [],
+    "methodSection": "5,7"
+  },
+  "physical_recovery_locator": {
+    "cols": [
+      [
+        "binding_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "pod_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "current_attempt_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "current_footprint_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "locator_state",
+        "VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "reason_code",
+        "LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "domain_version",
+        "BIGINT NULL"
+      ],
+      [
+        "target_dimension_id",
+        "INT NOT NULL"
+      ],
+      [
+        "locator_revision",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "last_mutation_operation_uuid",
+        "VARBINARY(16) NOT NULL"
+      ]
+    ],
+    "pk": [
+      "binding_uuid",
+      "pod_uuid"
+    ],
+    "checks": [
+      "locator_state IN ('CREATE_PREPARED','UNBOUND_ADOPTION_PREPARED','DEBUG_ITEM_CREATE_PREPARED','ROW_ACTIVE','ROW_INACTIVE_PENDING','ROW_INACTIVE_VERIFIED','ABSENT_PENDING','ABSENT_VERIFIED','LEGACY_UNCERTIFIED','QUARANTINED')"
+    ],
+    "uniques": [
+      [
+        "ux_locator_attempt",
+        [
+          "binding_uuid",
+          "current_attempt_uuid"
+        ]
+      ]
+    ],
+    "fks": [
+      [
+        "fk_locator_target",
+        [
+          "binding_uuid",
+          "pod_uuid",
+          "current_attempt_uuid",
+          "current_footprint_uuid"
+        ],
+        "physical_recovery_footprint",
+        [
+          "binding_uuid",
+          "pod_uuid",
+          "attempt_uuid",
+          "footprint_uuid"
+        ]
+      ],
+      [
+        "fk_locator_intent",
+        [
+          "binding_uuid",
+          "pod_uuid",
+          "current_attempt_uuid"
+        ],
+        "physical_recovery_intent",
+        [
+          "binding_uuid",
+          "pod_uuid",
+          "attempt_uuid"
+        ]
+      ],
+      [
+        "fk_locator_mutation",
+        [
+          "binding_uuid",
+          "last_mutation_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ]
+    ],
+    "indices": [],
+    "methodSection": "5,7,8"
+  },
+  "physical_recovery_obligation": {
+    "cols": [
+      [
+        "binding_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "pod_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "attempt_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "footprint_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "origin_version",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "purpose",
+        "VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "created_operation_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "attempt_retirement_operation_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "obligation_state",
+        "VARCHAR(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "obligation_revision",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "verified_operation_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "verification_proof_bytes",
+        "LONGBLOB NULL"
+      ],
+      [
+        "verification_proof_sha256",
+        "VARBINARY(32) NULL"
+      ],
+      [
+        "last_mutation_operation_uuid",
+        "VARBINARY(16) NOT NULL"
+      ]
+    ],
+    "pk": [
+      "binding_uuid",
+      "pod_uuid",
+      "attempt_uuid",
+      "footprint_uuid"
+    ],
+    "checks": [
+      "purpose IN ('RETIRED_ATTEMPT','ABORTED_CREATE','SAME_ATTEMPT_CHECKPOINT')",
+      "obligation_state IN ('PENDING','VERIFIED')",
+      "((verification_proof_bytes IS NULL AND verification_proof_sha256 IS NULL) OR (verification_proof_bytes IS NOT NULL AND verification_proof_sha256 IS NOT NULL))",
+      "(obligation_state='PENDING' AND verified_operation_uuid IS NULL AND verification_proof_bytes IS NULL) OR (obligation_state='VERIFIED' AND verified_operation_uuid IS NOT NULL AND verification_proof_bytes IS NOT NULL)",
+      "purpose<>'RETIRED_ATTEMPT' OR attempt_retirement_operation_uuid IS NOT NULL"
+    ],
+    "uniques": [],
+    "fks": [
+      [
+        "fk_obligation_footprint",
+        [
+          "binding_uuid",
+          "pod_uuid",
+          "attempt_uuid",
+          "footprint_uuid"
+        ],
+        "physical_recovery_footprint",
+        [
+          "binding_uuid",
+          "pod_uuid",
+          "attempt_uuid",
+          "footprint_uuid"
+        ]
+      ],
+      [
+        "fk_obligation_created",
+        [
+          "binding_uuid",
+          "created_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ],
+      [
+        "fk_obligation_retirement",
+        [
+          "binding_uuid",
+          "attempt_retirement_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ],
+      [
+        "fk_obligation_verified",
+        [
+          "binding_uuid",
+          "verified_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ],
+      [
+        "fk_obligation_mutation",
+        [
+          "binding_uuid",
+          "last_mutation_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ]
+    ],
+    "indices": [],
+    "methodSection": "5,8"
+  },
+  "fp_lifecycle_completion": {
+    "cols": [
+      [
+        "binding_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "receipt_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "completion_operation_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "completion_kind",
+        "VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "boot_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "boot_generation",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "world_identity",
+        "LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "source_identity",
+        "LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "pod_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "owner_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "attempt_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "footprint_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "before_domain_version",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "after_domain_version",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "removal_result_bytes",
+        "LONGBLOB NOT NULL"
+      ],
+      [
+        "removal_result_sha256",
+        "VARBINARY(32) NOT NULL"
+      ],
+      [
+        "ticket_result_bytes",
+        "LONGBLOB NOT NULL"
+      ],
+      [
+        "ticket_result_sha256",
+        "VARBINARY(32) NOT NULL"
+      ],
+      [
+        "checkpoint_bytes",
+        "LONGBLOB NOT NULL"
+      ],
+      [
+        "checkpoint_sha256",
+        "VARBINARY(32) NOT NULL"
+      ],
+      [
+        "original_context_bytes",
+        "LONGBLOB NOT NULL"
+      ],
+      [
+        "original_context_sha256",
+        "VARBINARY(32) NOT NULL"
+      ],
+      [
+        "allowed_use",
+        "VARCHAR(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "completion_state",
+        "VARCHAR(24) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "consumed_by_operation_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "completion_revision",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "last_mutation_operation_uuid",
+        "VARBINARY(16) NOT NULL"
+      ]
+    ],
+    "pk": [
+      "binding_uuid",
+      "receipt_uuid"
+    ],
+    "checks": [
+      "completion_kind IN ('RECALL','ABORTED_CREATE_CLEANUP')",
+      "allowed_use IN ('REARM_AFTER_RECALL','REARM_AFTER_ABORT_CLEANUP')",
+      "completion_state='CHECKPOINT_COMMITTED'",
+      "after_domain_version=before_domain_version+1",
+      "boot_generation>0",
+      "(completion_kind='RECALL' AND allowed_use='REARM_AFTER_RECALL') OR (completion_kind='ABORTED_CREATE_CLEANUP' AND allowed_use='REARM_AFTER_ABORT_CLEANUP')"
+    ],
+    "uniques": [
+      [
+        "ux_completion_operation",
+        [
+          "binding_uuid",
+          "completion_operation_uuid"
+        ]
+      ]
+    ],
+    "fks": [
+      [
+        "fk_completion_footprint",
+        [
+          "binding_uuid",
+          "pod_uuid",
+          "attempt_uuid",
+          "footprint_uuid"
+        ],
+        "physical_recovery_footprint",
+        [
+          "binding_uuid",
+          "pod_uuid",
+          "attempt_uuid",
+          "footprint_uuid"
+        ]
+      ],
+      [
+        "fk_completion_operation",
+        [
+          "binding_uuid",
+          "completion_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ],
+      [
+        "fk_completion_consumed",
+        [
+          "binding_uuid",
+          "consumed_by_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ],
+      [
+        "fk_completion_mutation",
+        [
+          "binding_uuid",
+          "last_mutation_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ]
+    ],
+    "indices": [],
+    "methodSection": "7"
+  },
+  "physical_footprint_transfer": {
+    "cols": [
+      [
+        "binding_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "move_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "pod_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "attempt_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "from_footprint_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "to_footprint_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "expected_domain_version",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "target_domain_version",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "from_world_name",
+        "LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "from_pos_x",
+        "DOUBLE NOT NULL"
+      ],
+      [
+        "from_pos_y",
+        "DOUBLE NOT NULL"
+      ],
+      [
+        "from_pos_z",
+        "DOUBLE NOT NULL"
+      ],
+      [
+        "from_yaw",
+        "DOUBLE NOT NULL"
+      ],
+      [
+        "from_pitch",
+        "DOUBLE NOT NULL"
+      ],
+      [
+        "from_dimension_id",
+        "INT NOT NULL"
+      ],
+      [
+        "to_world_name",
+        "LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "to_pos_x",
+        "DOUBLE NOT NULL"
+      ],
+      [
+        "to_pos_y",
+        "DOUBLE NOT NULL"
+      ],
+      [
+        "to_pos_z",
+        "DOUBLE NOT NULL"
+      ],
+      [
+        "to_yaw",
+        "DOUBLE NOT NULL"
+      ],
+      [
+        "to_pitch",
+        "DOUBLE NOT NULL"
+      ],
+      [
+        "to_dimension_id",
+        "INT NOT NULL"
+      ],
+      [
+        "prepare_operation_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "commit_operation_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "cleanup_operation_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "phase",
+        "VARCHAR(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "move_plan_bytes",
+        "LONGBLOB NOT NULL"
+      ],
+      [
+        "move_plan_sha256",
+        "VARBINARY(32) NOT NULL"
+      ],
+      [
+        "cleanup_proof_bytes",
+        "LONGBLOB NULL"
+      ],
+      [
+        "cleanup_proof_sha256",
+        "VARBINARY(32) NULL"
+      ],
+      [
+        "transfer_revision",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "last_mutation_operation_uuid",
+        "VARBINARY(16) NOT NULL"
+      ]
+    ],
+    "pk": [
+      "binding_uuid",
+      "move_uuid"
+    ],
+    "checks": [
+      "from_footprint_uuid<>to_footprint_uuid",
+      "target_domain_version=expected_domain_version+1",
+      "from_dimension_id=to_dimension_id",
+      "phase IN ('MOVE_PREPARED','MOVE_COMMITTED_CLEANUP_PENDING','MOVE_COMPLETED','MOVE_REMEDIATION_PENDING')",
+      "((cleanup_proof_bytes IS NULL AND cleanup_proof_sha256 IS NULL) OR (cleanup_proof_bytes IS NOT NULL AND cleanup_proof_sha256 IS NOT NULL))",
+      "phase NOT IN ('MOVE_COMMITTED_CLEANUP_PENDING','MOVE_COMPLETED') OR commit_operation_uuid IS NOT NULL",
+      "phase<>'MOVE_COMPLETED' OR (cleanup_operation_uuid IS NOT NULL AND cleanup_proof_bytes IS NOT NULL)",
+      "ABS(from_pos_x) < 1.0e300",
+      "ABS(from_pos_y) < 1.0e300",
+      "ABS(from_pos_z) < 1.0e300",
+      "ABS(from_yaw) < 1.0e30",
+      "ABS(from_pitch) < 1.0e30",
+      "ABS(to_pos_x) < 1.0e300",
+      "ABS(to_pos_y) < 1.0e300",
+      "ABS(to_pos_z) < 1.0e300",
+      "ABS(to_yaw) < 1.0e30",
+      "ABS(to_pitch) < 1.0e30"
+    ],
+    "uniques": [],
+    "fks": [
+      [
+        "fk_move_from",
+        [
+          "binding_uuid",
+          "pod_uuid",
+          "attempt_uuid",
+          "from_footprint_uuid"
+        ],
+        "physical_recovery_footprint",
+        [
+          "binding_uuid",
+          "pod_uuid",
+          "attempt_uuid",
+          "footprint_uuid"
+        ]
+      ],
+      [
+        "fk_move_to",
+        [
+          "binding_uuid",
+          "pod_uuid",
+          "attempt_uuid",
+          "to_footprint_uuid"
+        ],
+        "physical_recovery_footprint",
+        [
+          "binding_uuid",
+          "pod_uuid",
+          "attempt_uuid",
+          "footprint_uuid"
+        ]
+      ],
+      [
+        "fk_move_prepare",
+        [
+          "binding_uuid",
+          "prepare_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ],
+      [
+        "fk_move_commit",
+        [
+          "binding_uuid",
+          "commit_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ],
+      [
+        "fk_move_cleanup",
+        [
+          "binding_uuid",
+          "cleanup_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ],
+      [
+        "fk_move_mutation",
+        [
+          "binding_uuid",
+          "last_mutation_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ]
+    ],
+    "indices": [],
+    "methodSection": "8"
+  },
+  "physical_source_unit": {
+    "cols": [
+      [
+        "binding_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "unit_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "world_identity",
+        "LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "save_identity",
+        "LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "loader_identity",
+        "LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "catalog_generation",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "read_generation",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "source_observation_bytes",
+        "LONGBLOB NOT NULL"
+      ],
+      [
+        "source_observation_sha256",
+        "VARBINARY(32) NOT NULL"
+      ],
+      [
+        "current_epoch",
+        "BIGINT NULL"
+      ],
+      [
+        "current_forest_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "unit_state",
+        "VARCHAR(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "unit_revision",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "created_operation_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "last_mutation_operation_uuid",
+        "VARBINARY(16) NOT NULL"
+      ]
+    ],
+    "pk": [
+      "binding_uuid",
+      "unit_uuid"
+    ],
+    "checks": [
+      "unit_state IN ('DRAFT','SEALED')",
+      "((current_epoch IS NULL AND current_forest_uuid IS NULL) OR (current_epoch IS NOT NULL AND current_forest_uuid IS NOT NULL))",
+      "(unit_state='DRAFT' AND current_epoch IS NULL) OR (unit_state='SEALED' AND current_epoch IS NOT NULL AND current_epoch>=0)"
+    ],
+    "uniques": [],
+    "fks": [
+      [
+        "fk_unit_binding",
+        [
+          "binding_uuid"
+        ],
+        "physical_recovery_binding",
+        [
+          "binding_uuid"
+        ]
+      ],
+      [
+        "fk_unit_created",
+        [
+          "binding_uuid",
+          "created_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ],
+      [
+        "fk_unit_mutation",
+        [
+          "binding_uuid",
+          "last_mutation_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ]
+    ],
+    "indices": [],
+    "methodSection": "9"
+  },
+  "physical_source_forest": {
+    "cols": [
+      [
+        "binding_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "unit_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "forest_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "source_epoch",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "forest_state",
+        "VARCHAR(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "forest_codec",
+        "VARCHAR(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "forest_bytes",
+        "LONGBLOB NOT NULL"
+      ],
+      [
+        "forest_sha256",
+        "VARBINARY(32) NOT NULL"
+      ],
+      [
+        "member_count",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "root_count",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "carrier_count",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "retained_bytes",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "created_operation_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "fp_pod_uuid_index_bytes",
+        "LONGBLOB NULL"
+      ],
+      [
+        "fp_pod_uuid_index_sha256",
+        "VARBINARY(32) NULL"
+      ]
+    ],
+    "pk": [
+      "binding_uuid",
+      "unit_uuid",
+      "forest_uuid"
+    ],
+    "checks": [
+      "source_epoch>=0",
+      "forest_state IN ('DRAFT','SEALED')",
+      "forest_codec='FP_SOURCE_FOREST_BE_V2'",
+      "member_count>0",
+      "root_count>0",
+      "root_count<=member_count",
+      "carrier_count>0",
+      "(fp_pod_uuid_index_bytes IS NULL AND fp_pod_uuid_index_sha256 IS NULL) OR (fp_pod_uuid_index_bytes IS NOT NULL AND fp_pod_uuid_index_sha256 IS NOT NULL)",
+      "fp_pod_uuid_index_sha256 IS NULL OR (OCTET_LENGTH(fp_pod_uuid_index_sha256)=32 AND fp_pod_uuid_index_sha256=UNHEX(SHA2(fp_pod_uuid_index_bytes,256)))",
+      "forest_state<>'SEALED' OR (fp_pod_uuid_index_bytes IS NOT NULL AND fp_pod_uuid_index_sha256 IS NOT NULL)"
+    ],
+    "uniques": [
+      [
+        "ux_forest_epoch_key",
+        [
+          "binding_uuid",
+          "unit_uuid",
+          "forest_uuid",
+          "source_epoch"
+        ]
+      ],
+      [
+        "ux_forest_epoch",
+        [
+          "binding_uuid",
+          "unit_uuid",
+          "source_epoch"
+        ]
+      ]
+    ],
+    "fks": [
+      [
+        "fk_forest_unit",
+        [
+          "binding_uuid",
+          "unit_uuid"
+        ],
+        "physical_source_unit",
+        [
+          "binding_uuid",
+          "unit_uuid"
+        ]
+      ],
+      [
+        "fk_forest_created",
+        [
+          "binding_uuid",
+          "created_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ]
+    ],
+    "indices": [],
+    "methodSection": "9"
+  },
+  "physical_source_transfer": {
+    "cols": [
+      [
+        "binding_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "transfer_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "unit_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "old_epoch",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "old_forest_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "target_epoch",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "target_forest_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "transfer_plan_bytes",
+        "LONGBLOB NOT NULL"
+      ],
+      [
+        "transfer_plan_sha256",
+        "VARBINARY(32) NOT NULL"
+      ],
+      [
+        "prepare_operation_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "cutover_operation_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "retire_operation_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "phase",
+        "VARCHAR(48) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "target_receipts_bytes",
+        "LONGBLOB NULL"
+      ],
+      [
+        "target_receipts_sha256",
+        "VARBINARY(32) NULL"
+      ],
+      [
+        "retirement_proof_bytes",
+        "LONGBLOB NULL"
+      ],
+      [
+        "retirement_proof_sha256",
+        "VARBINARY(32) NULL"
+      ],
+      [
+        "transfer_revision",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "last_mutation_operation_uuid",
+        "VARBINARY(16) NOT NULL"
+      ]
+    ],
+    "pk": [
+      "binding_uuid",
+      "transfer_uuid"
+    ],
+    "checks": [
+      "old_epoch>=0",
+      "target_epoch=old_epoch+1",
+      "old_forest_uuid<>target_forest_uuid",
+      "phase IN ('SOURCE_TRANSFER_PREPARED','TARGETS_DURABLE','CUTOVER_COMMITTED_RETIRE_PENDING','COMPLETED','REMEDIATION_REQUIRED')",
+      "((target_receipts_bytes IS NULL AND target_receipts_sha256 IS NULL) OR (target_receipts_bytes IS NOT NULL AND target_receipts_sha256 IS NOT NULL))",
+      "((retirement_proof_bytes IS NULL AND retirement_proof_sha256 IS NULL) OR (retirement_proof_bytes IS NOT NULL AND retirement_proof_sha256 IS NOT NULL))",
+      "phase NOT IN ('TARGETS_DURABLE','CUTOVER_COMMITTED_RETIRE_PENDING','COMPLETED') OR target_receipts_bytes IS NOT NULL",
+      "phase NOT IN ('CUTOVER_COMMITTED_RETIRE_PENDING','COMPLETED') OR cutover_operation_uuid IS NOT NULL",
+      "phase<>'COMPLETED' OR (retire_operation_uuid IS NOT NULL AND retirement_proof_bytes IS NOT NULL)"
+    ],
+    "uniques": [],
+    "fks": [
+      [
+        "fk_source_transfer_old",
+        [
+          "binding_uuid",
+          "unit_uuid",
+          "old_forest_uuid",
+          "old_epoch"
+        ],
+        "physical_source_forest",
+        [
+          "binding_uuid",
+          "unit_uuid",
+          "forest_uuid",
+          "source_epoch"
+        ]
+      ],
+      [
+        "fk_source_transfer_target",
+        [
+          "binding_uuid",
+          "unit_uuid",
+          "target_forest_uuid",
+          "target_epoch"
+        ],
+        "physical_source_forest",
+        [
+          "binding_uuid",
+          "unit_uuid",
+          "forest_uuid",
+          "source_epoch"
+        ]
+      ],
+      [
+        "fk_source_transfer_prepare",
+        [
+          "binding_uuid",
+          "prepare_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ],
+      [
+        "fk_source_transfer_cutover",
+        [
+          "binding_uuid",
+          "cutover_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ],
+      [
+        "fk_source_transfer_retire",
+        [
+          "binding_uuid",
+          "retire_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ],
+      [
+        "fk_source_transfer_mutation",
+        [
+          "binding_uuid",
+          "last_mutation_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ]
+    ],
+    "indices": [],
+    "methodSection": "9"
+  },
+  "physical_source_write": {
+    "cols": [
+      [
+        "binding_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "write_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "workflow_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "resource_kind",
+        "VARCHAR(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "carrier_key_hash",
+        "VARBINARY(32) NOT NULL"
+      ],
+      [
+        "carrier_key",
+        "LONGBLOB NOT NULL"
+      ],
+      [
+        "save_identity",
+        "LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "loader_identity",
+        "LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "region_identity",
+        "LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "slot_x",
+        "INT NOT NULL"
+      ],
+      [
+        "slot_z",
+        "INT NOT NULL"
+      ],
+      [
+        "write_generation",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "payload_descriptor_bytes",
+        "LONGBLOB NOT NULL"
+      ],
+      [
+        "payload_descriptor_sha256",
+        "VARBINARY(32) NOT NULL"
+      ],
+      [
+        "payload_length",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "payload_sha256",
+        "VARBINARY(32) NOT NULL"
+      ],
+      [
+        "payload_artifact_identity",
+        "LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "undo_kind",
+        "VARCHAR(24) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "undo_descriptor_bytes",
+        "LONGBLOB NOT NULL"
+      ],
+      [
+        "undo_descriptor_sha256",
+        "VARBINARY(32) NOT NULL"
+      ],
+      [
+        "undo_length",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "undo_content_sha256",
+        "VARBINARY(32) NULL"
+      ],
+      [
+        "undo_artifact_identity",
+        "LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "member_coverage_bytes",
+        "LONGBLOB NOT NULL"
+      ],
+      [
+        "member_coverage_sha256",
+        "VARBINARY(32) NOT NULL"
+      ],
+      [
+        "obligation_revisions_bytes",
+        "LONGBLOB NOT NULL"
+      ],
+      [
+        "obligation_revisions_sha256",
+        "VARBINARY(32) NOT NULL"
+      ],
+      [
+        "limit_profile_sha256",
+        "VARBINARY(32) NOT NULL"
+      ],
+      [
+        "receipt_codec",
+        "VARCHAR(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "prepared_operation_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "write_state",
+        "VARCHAR(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "resolved_operation_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "durable_receipt_bytes",
+        "LONGBLOB NULL"
+      ],
+      [
+        "durable_receipt_sha256",
+        "VARBINARY(32) NULL"
+      ],
+      [
+        "failure_diagnostic_identity",
+        "LONGBLOB NULL"
+      ],
+      [
+        "failure_diagnostic_sha256",
+        "VARBINARY(32) NULL"
+      ],
+      [
+        "write_revision",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "last_mutation_operation_uuid",
+        "VARBINARY(16) NOT NULL"
+      ]
+    ],
+    "pk": [
+      "binding_uuid",
+      "write_uuid"
+    ],
+    "checks": [
+      "resource_kind='CARRIER'",
+      "carrier_key_hash=UNHEX(SHA2(carrier_key,256))",
+      "write_generation>=0",
+      "payload_length>0",
+      "undo_kind IN ('FULL_CHUNK','SLOT_ABSENT')",
+      "(undo_kind='FULL_CHUNK' AND undo_length>0 AND undo_content_sha256 IS NOT NULL) OR (undo_kind='SLOT_ABSENT' AND undo_length=0 AND undo_content_sha256 IS NULL)",
+      "receipt_codec='FP_SOURCE_WRITE_RECEIPT_BE_V1'",
+      "write_state IN ('PREPARED','DURABLE','NO_PUT','SUPERSEDED','FAILED_NEEDS_RECONCILIATION')",
+      "((durable_receipt_bytes IS NULL AND durable_receipt_sha256 IS NULL) OR (durable_receipt_bytes IS NOT NULL AND durable_receipt_sha256 IS NOT NULL))",
+      "((failure_diagnostic_identity IS NULL AND failure_diagnostic_sha256 IS NULL) OR (failure_diagnostic_identity IS NOT NULL AND failure_diagnostic_sha256 IS NOT NULL))",
+      "(write_state='PREPARED' AND resolved_operation_uuid IS NULL AND durable_receipt_bytes IS NULL AND failure_diagnostic_identity IS NULL) OR (write_state='DURABLE' AND resolved_operation_uuid IS NOT NULL AND durable_receipt_bytes IS NOT NULL) OR (write_state IN ('NO_PUT','SUPERSEDED','FAILED_NEEDS_RECONCILIATION') AND resolved_operation_uuid IS NOT NULL AND durable_receipt_bytes IS NULL)",
+      "write_state<>'FAILED_NEEDS_RECONCILIATION' OR failure_diagnostic_identity IS NOT NULL",
+      "failure_diagnostic_identity IS NULL OR failure_diagnostic_sha256=UNHEX(SHA2(failure_diagnostic_identity,256))"
+    ],
+    "uniques": [
+      [
+        "ux_write_generation",
+        [
+          "binding_uuid",
+          "carrier_key_hash",
+          "write_generation"
+        ]
+      ]
+    ],
+    "fks": [
+      [
+        "fk_write_carrier",
+        [
+          "binding_uuid",
+          "resource_kind",
+          "carrier_key_hash"
+        ],
+        "fp_recovery_reservation",
+        [
+          "binding_uuid",
+          "resource_kind",
+          "resource_key_hash"
+        ]
+      ],
+      [
+        "fk_write_prepared",
+        [
+          "binding_uuid",
+          "prepared_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ],
+      [
+        "fk_write_resolved",
+        [
+          "binding_uuid",
+          "resolved_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ],
+      [
+        "fk_write_mutation",
+        [
+          "binding_uuid",
+          "last_mutation_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ]
+    ],
+    "indices": [],
+    "methodSection": "10"
+  },
+  "physical_source_obligation": {
+    "cols": [
+      [
+        "binding_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "unit_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "forest_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "resource_kind",
+        "VARCHAR(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "carrier_key_hash",
+        "VARBINARY(32) NOT NULL"
+      ],
+      [
+        "carrier_key",
+        "LONGBLOB NOT NULL"
+      ],
+      [
+        "purpose",
+        "VARCHAR(24) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "obligation_state",
+        "VARCHAR(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL"
+      ],
+      [
+        "obligation_revision",
+        "BIGINT NOT NULL"
+      ],
+      [
+        "created_operation_uuid",
+        "VARBINARY(16) NOT NULL"
+      ],
+      [
+        "write_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "discharged_operation_uuid",
+        "VARBINARY(16) NULL"
+      ],
+      [
+        "discharge_kind",
+        "VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NULL"
+      ],
+      [
+        "discharge_proof_bytes",
+        "LONGBLOB NULL"
+      ],
+      [
+        "discharge_proof_sha256",
+        "VARBINARY(32) NULL"
+      ],
+      [
+        "last_mutation_operation_uuid",
+        "VARBINARY(16) NOT NULL"
+      ]
+    ],
+    "pk": [
+      "binding_uuid",
+      "unit_uuid",
+      "forest_uuid",
+      "carrier_key_hash",
+      "purpose"
+    ],
+    "checks": [
+      "resource_kind='CARRIER'",
+      "carrier_key_hash=UNHEX(SHA2(carrier_key,256))",
+      "purpose IN ('OLD_HOLD','TARGET_STAGED','CURRENT_HOLD','OLD_RETIRE','UNDO')",
+      "obligation_state IN ('OPEN','DISCHARGED')",
+      "((discharge_proof_bytes IS NULL AND discharge_proof_sha256 IS NULL) OR (discharge_proof_bytes IS NOT NULL AND discharge_proof_sha256 IS NOT NULL))",
+      "discharge_kind IS NULL OR discharge_kind IN ('CUTOVER','WORLD_RETIREMENT','SAFE_UNDO','SUCCESSOR_CUTOVER')",
+      "(obligation_state='OPEN' AND discharged_operation_uuid IS NULL AND discharge_kind IS NULL AND discharge_proof_bytes IS NULL) OR (obligation_state='DISCHARGED' AND discharged_operation_uuid IS NOT NULL AND discharge_kind IS NOT NULL AND discharge_proof_bytes IS NOT NULL)",
+      "purpose NOT IN ('TARGET_STAGED','UNDO','OLD_RETIRE') OR write_uuid IS NOT NULL"
+    ],
+    "uniques": [],
+    "fks": [
+      [
+        "fk_source_obligation_forest",
+        [
+          "binding_uuid",
+          "unit_uuid",
+          "forest_uuid"
+        ],
+        "physical_source_forest",
+        [
+          "binding_uuid",
+          "unit_uuid",
+          "forest_uuid"
+        ]
+      ],
+      [
+        "fk_source_obligation_carrier",
+        [
+          "binding_uuid",
+          "resource_kind",
+          "carrier_key_hash"
+        ],
+        "fp_recovery_reservation",
+        [
+          "binding_uuid",
+          "resource_kind",
+          "resource_key_hash"
+        ]
+      ],
+      [
+        "fk_source_obligation_write",
+        [
+          "binding_uuid",
+          "write_uuid"
+        ],
+        "physical_source_write",
+        [
+          "binding_uuid",
+          "write_uuid"
+        ]
+      ],
+      [
+        "fk_source_obligation_created",
+        [
+          "binding_uuid",
+          "created_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ],
+      [
+        "fk_source_obligation_discharged",
+        [
+          "binding_uuid",
+          "discharged_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ],
+      [
+        "fk_source_obligation_mutation",
+        [
+          "binding_uuid",
+          "last_mutation_operation_uuid"
+        ],
+        "fp_recovery_operation",
+        [
+          "binding_uuid",
+          "operation_uuid"
+        ]
+      ]
+    ],
+    "indices": [],
+    "methodSection": "9,10"
+  },
+  "_ordinarySyntheticContract": {
+    "attribution": "SYNTHETIC_ORDINARY_TEST_ONLY",
+    "schema": "fp_ordinary_synthetic",
+    "serverUuid": "982937bc-bc46-11f1-b957-04421a0aa74d",
+    "serverVersion": "9.7.2",
+    "provisioningUuid": "16fb58b8-a867-43b7-8e8e-03554578bf14",
+    "bindingUuid": "e83a7eb6-c7fd-4094-9751-029bdef5c0cf",
+    "runtimePrincipal": "fp_runtime@localhost",
+    "auditDefiner": "fp_audit@localhost",
+    "callerRoles": "NONE",
+    "auditDefinerRoles": "NONE",
+    "auditProcedure": "fp_audit_schema_format3",
+    "triggerEventShape": "BEFORE_ROW_INSERT_UPDATE_DELETE",
+    "triggerBody": "BEGIN\n  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'SYNTHETIC_FORMAT3_GUARD_REJECTS_DML';\nEND",
+    "auditRoutineBody": "BEGIN\n  SELECT @@server_uuid AS server_uuid,@@version AS server_version,CONNECTION_ID() AS connection_id,CURRENT_USER() AS audit_definer,USER() AS connected_caller,CURRENT_ROLE() AS effective_roles,DATABASE() AS routine_default_schema,UTC_TIMESTAMP(6) AS observed_db_time,'fp_ordinary_synthetic' AS audited_schema,m.singleton_fixed1,m.backend,m.format_version,m.ddl_sha256,m.provisioning_uuid,m.bootstrap_state,m.expected_server_uuid,m.expected_binding_uuid,m.import_state,m.import_operation_uuid,m.import_manifest_sha256,m.import_snapshot_sha256,m.import_receipt_sha256,m.guard_manifest_sha256,m.configuration_sha256,m.source_provenance_kind,m.source_provenance_bytes,m.source_provenance_sha256,m.limit_profile_encoding,m.limit_profile_bytes,m.limit_profile_sha256,m.max_region_bytes,m.max_chunk_bytes,m.max_decompressed_bytes,m.max_nbt_depth,m.max_members,m.max_retained_bytes,m.max_sql_packet_bytes,m.max_native_artifact_bytes FROM `fp_ordinary_synthetic`.fp_schema_manifest AS m WHERE m.singleton_fixed1=1;\n  SELECT TABLE_SCHEMA,TABLE_NAME,TABLE_TYPE,ENGINE,VERSION,ROW_FORMAT,TABLE_COLLATION,CREATE_OPTIONS,TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES WHERE CAST(TABLE_SCHEMA AS BINARY)=CAST('fp_ordinary_synthetic' AS BINARY) ORDER BY CAST(TABLE_NAME AS BINARY);\n  SELECT TABLE_SCHEMA,TABLE_NAME,COLUMN_NAME,ORDINAL_POSITION,COLUMN_DEFAULT,IS_NULLABLE,DATA_TYPE,CHARACTER_MAXIMUM_LENGTH,CHARACTER_OCTET_LENGTH,NUMERIC_PRECISION,NUMERIC_SCALE,DATETIME_PRECISION,CHARACTER_SET_NAME,COLLATION_NAME,COLUMN_TYPE,COLUMN_KEY,EXTRA,COLUMN_COMMENT,GENERATION_EXPRESSION FROM INFORMATION_SCHEMA.COLUMNS WHERE CAST(TABLE_SCHEMA AS BINARY)=CAST('fp_ordinary_synthetic' AS BINARY) ORDER BY CAST(TABLE_NAME AS BINARY),ORDINAL_POSITION;\n  SELECT TABLE_SCHEMA,TABLE_NAME,NON_UNIQUE,INDEX_SCHEMA,INDEX_NAME,SEQ_IN_INDEX,COLUMN_NAME,COLLATION,SUB_PART,PACKED,NULLABLE,INDEX_TYPE,COMMENT,INDEX_COMMENT,IS_VISIBLE,EXPRESSION FROM INFORMATION_SCHEMA.STATISTICS WHERE CAST(TABLE_SCHEMA AS BINARY)=CAST('fp_ordinary_synthetic' AS BINARY) ORDER BY CAST(TABLE_NAME AS BINARY),CAST(INDEX_NAME AS BINARY),SEQ_IN_INDEX;\n  SELECT CONSTRAINT_CATALOG,CONSTRAINT_SCHEMA,CONSTRAINT_NAME,TABLE_SCHEMA,TABLE_NAME,CONSTRAINT_TYPE,ENFORCED FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE CAST(TABLE_SCHEMA AS BINARY)=CAST('fp_ordinary_synthetic' AS BINARY) ORDER BY CAST(TABLE_NAME AS BINARY),CAST(CONSTRAINT_NAME AS BINARY),CONSTRAINT_TYPE;\n  SELECT CONSTRAINT_CATALOG,CONSTRAINT_SCHEMA,CONSTRAINT_NAME,TABLE_CATALOG,TABLE_SCHEMA,TABLE_NAME,COLUMN_NAME,ORDINAL_POSITION,POSITION_IN_UNIQUE_CONSTRAINT,REFERENCED_TABLE_SCHEMA,REFERENCED_TABLE_NAME,REFERENCED_COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE CAST(TABLE_SCHEMA AS BINARY)=CAST('fp_ordinary_synthetic' AS BINARY) ORDER BY CAST(TABLE_NAME AS BINARY),CAST(CONSTRAINT_NAME AS BINARY),ORDINAL_POSITION;\n  SELECT CONSTRAINT_CATALOG,CONSTRAINT_SCHEMA,CONSTRAINT_NAME,UNIQUE_CONSTRAINT_CATALOG,UNIQUE_CONSTRAINT_SCHEMA,UNIQUE_CONSTRAINT_NAME,MATCH_OPTION,UPDATE_RULE,DELETE_RULE,TABLE_NAME,REFERENCED_TABLE_NAME FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS WHERE CAST(CONSTRAINT_SCHEMA AS BINARY)=CAST('fp_ordinary_synthetic' AS BINARY) ORDER BY CAST(TABLE_NAME AS BINARY),CAST(CONSTRAINT_NAME AS BINARY);\n  SELECT CONSTRAINT_CATALOG,CONSTRAINT_SCHEMA,CONSTRAINT_NAME,CHECK_CLAUSE,OCTET_LENGTH(CHECK_CLAUSE) AS clause_octets,UNHEX(SHA2(CAST(CHECK_CLAUSE AS BINARY),256)) AS clause_sha256 FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS WHERE CAST(CONSTRAINT_SCHEMA AS BINARY)=CAST('fp_ordinary_synthetic' AS BINARY) ORDER BY CAST(CONSTRAINT_NAME AS BINARY);\n  SELECT TRIGGER_SCHEMA,TRIGGER_NAME,EVENT_OBJECT_SCHEMA,EVENT_OBJECT_TABLE,EVENT_MANIPULATION,ACTION_TIMING,ACTION_ORDER,ACTION_ORIENTATION,ACTION_STATEMENT,SQL_MODE,DEFINER,CHARACTER_SET_CLIENT,COLLATION_CONNECTION,DATABASE_COLLATION,OCTET_LENGTH(ACTION_STATEMENT) AS statement_octets,UNHEX(SHA2(CAST(ACTION_STATEMENT AS BINARY),256)) AS statement_sha256 FROM INFORMATION_SCHEMA.TRIGGERS WHERE CAST(TRIGGER_SCHEMA AS BINARY)=CAST('fp_ordinary_synthetic' AS BINARY) ORDER BY CAST(TRIGGER_NAME AS BINARY);\n  SELECT ROUTINE_SCHEMA,ROUTINE_NAME,ROUTINE_TYPE,ROUTINE_DEFINITION,SECURITY_TYPE,SQL_DATA_ACCESS,SQL_MODE,DEFINER,CHARACTER_SET_CLIENT,COLLATION_CONNECTION,DATABASE_COLLATION,IS_DETERMINISTIC,DATA_TYPE,DTD_IDENTIFIER,ROUTINE_COMMENT,OCTET_LENGTH(ROUTINE_DEFINITION) AS definition_octets,UNHEX(SHA2(CAST(ROUTINE_DEFINITION AS BINARY),256)) AS definition_sha256 FROM INFORMATION_SCHEMA.ROUTINES WHERE CAST(ROUTINE_SCHEMA AS BINARY)=CAST('fp_ordinary_synthetic' AS BINARY) AND CAST(ROUTINE_NAME AS BINARY)=CAST('fp_audit_schema_format3' AS BINARY) AND ROUTINE_TYPE='PROCEDURE' ORDER BY CAST(ROUTINE_NAME AS BINARY),ROUTINE_TYPE;\n  SELECT SPECIFIC_CATALOG,SPECIFIC_SCHEMA,SPECIFIC_NAME,ORDINAL_POSITION,PARAMETER_MODE,PARAMETER_NAME,DATA_TYPE,DTD_IDENTIFIER,CHARACTER_SET_NAME,COLLATION_NAME FROM INFORMATION_SCHEMA.PARAMETERS WHERE CAST(SPECIFIC_SCHEMA AS BINARY)=CAST('fp_ordinary_synthetic' AS BINARY) AND CAST(SPECIFIC_NAME AS BINARY)=CAST('fp_audit_schema_format3' AS BINARY) ORDER BY CAST(SPECIFIC_NAME AS BINARY),ORDINAL_POSITION;\n  SELECT singleton_fixed1,binding_uuid,cutover_state,format_version FROM `fp_ordinary_synthetic`.physical_recovery_binding ORDER BY singleton_fixed1;\n  SELECT singleton_fixed1,binding_uuid,writer_epoch,owner_boot_uuid,lease_until,last_commit_operation_uuid,last_commit_fingerprint FROM `fp_ordinary_synthetic`.fp_runtime_writer ORDER BY singleton_fixed1;\n  SELECT @@server_uuid AS server_uuid,@@version AS server_version,CONNECTION_ID() AS connection_id,CURRENT_USER() AS audit_definer,USER() AS connected_caller,CURRENT_ROLE() AS effective_roles,DATABASE() AS routine_default_schema,UTC_TIMESTAMP(6) AS observed_db_time,'fp_ordinary_synthetic' AS audited_schema,m.singleton_fixed1,m.backend,m.format_version,m.ddl_sha256,m.provisioning_uuid,m.bootstrap_state,m.expected_server_uuid,m.expected_binding_uuid,m.import_state,m.import_operation_uuid,m.import_manifest_sha256,m.import_snapshot_sha256,m.import_receipt_sha256,m.guard_manifest_sha256,m.configuration_sha256,m.source_provenance_kind,m.source_provenance_bytes,m.source_provenance_sha256,m.limit_profile_encoding,m.limit_profile_bytes,m.limit_profile_sha256,m.max_region_bytes,m.max_chunk_bytes,m.max_decompressed_bytes,m.max_nbt_depth,m.max_members,m.max_retained_bytes,m.max_sql_packet_bytes,m.max_native_artifact_bytes FROM `fp_ordinary_synthetic`.fp_schema_manifest AS m WHERE m.singleton_fixed1=1;\n  SELECT GRANTEE,TABLE_CATALOG,TABLE_SCHEMA,TABLE_NAME,PRIVILEGE_TYPE,IS_GRANTABLE FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES WHERE GRANTEE='''fp_audit''@''localhost''' AND CAST(TABLE_SCHEMA AS BINARY)=CAST('fp_ordinary_synthetic' AS BINARY) ORDER BY TABLE_NAME,PRIVILEGE_TYPE;\n  SELECT GRANTEE,TABLE_CATALOG,TABLE_SCHEMA,TABLE_NAME,COLUMN_NAME,PRIVILEGE_TYPE,IS_GRANTABLE FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES WHERE GRANTEE='''fp_audit''@''localhost''' AND CAST(TABLE_SCHEMA AS BINARY)=CAST('fp_ordinary_synthetic' AS BINARY) ORDER BY TABLE_NAME,COLUMN_NAME,PRIVILEGE_TYPE;\n  SELECT GRANTEE,TABLE_CATALOG,TABLE_SCHEMA,PRIVILEGE_TYPE,IS_GRANTABLE FROM INFORMATION_SCHEMA.SCHEMA_PRIVILEGES WHERE GRANTEE='''fp_audit''@''localhost''' AND CAST(TABLE_SCHEMA AS BINARY)=CAST('fp_ordinary_synthetic' AS BINARY) ORDER BY PRIVILEGE_TYPE;\n  SELECT GRANTEE,TABLE_CATALOG,PRIVILEGE_TYPE,IS_GRANTABLE FROM INFORMATION_SCHEMA.USER_PRIVILEGES WHERE GRANTEE='''fp_audit''@''localhost''' ORDER BY PRIVILEGE_TYPE;\nEND",
+    "minimumAuditDefinerPrivileges": {
+      "table": ["SELECT"],
+      "column": [],
+      "schema": ["SELECT", "TRIGGER"],
+      "user": ["USAGE"],
+      "grantable": false
+    }
+  }
+}

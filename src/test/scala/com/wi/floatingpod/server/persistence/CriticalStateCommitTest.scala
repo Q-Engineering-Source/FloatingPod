@@ -85,7 +85,7 @@ class CriticalStateCommitTest:
       override def append(event: LogEvent): Unit = events += event.getMessage.getFormattedMessage
 
   private def sampleState(): FloatingPodState =
-    FloatingPodState(UUID.fromString("00000000-0000-0000-0000-000000000301"), None, 0L, "overworld", 0.0D, 64.0D, 0.0D, 0.0F, 0.0F, true, 1L, Some(0))
+    FloatingPodState(UUID.fromString("00000000-0000-0000-0000-000000000301"), None, 0L, "overworld", 0.0D, 64.0D, 0.0D, 0.0F, 0.0F, true, 1L, Some(0), com.wi.floatingpod.domain.PodOperatingMode.WorldIdle)
 
   private final class ControlledRepository(result: Try[FloatingPodState]) extends FloatingPodRepository:
     var updateCalls = 0

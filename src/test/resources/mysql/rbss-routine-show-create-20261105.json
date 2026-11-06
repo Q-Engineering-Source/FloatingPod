@@ -1,0 +1,87 @@
+{
+  "id": "SHOW_CREATE_AUDIT_ROUTINE",
+  "columns": [
+    {
+      "label": "Procedure",
+      "jdbcType": 12,
+      "typeName": "VARCHAR",
+      "precision": 64,
+      "scale": 0,
+      "nullable": 0,
+      "signed": false
+    },
+    {
+      "label": "sql_mode",
+      "jdbcType": 12,
+      "typeName": "VARCHAR",
+      "precision": 115,
+      "scale": 0,
+      "nullable": 0,
+      "signed": false
+    },
+    {
+      "label": "Create Procedure",
+      "jdbcType": 12,
+      "typeName": "VARCHAR",
+      "precision": 14096,
+      "scale": 0,
+      "nullable": 1,
+      "signed": false
+    },
+    {
+      "label": "character_set_client",
+      "jdbcType": 12,
+      "typeName": "VARCHAR",
+      "precision": 32,
+      "scale": 0,
+      "nullable": 0,
+      "signed": false
+    },
+    {
+      "label": "collation_connection",
+      "jdbcType": 12,
+      "typeName": "VARCHAR",
+      "precision": 32,
+      "scale": 0,
+      "nullable": 0,
+      "signed": false
+    },
+    {
+      "label": "Database Collation",
+      "jdbcType": 12,
+      "typeName": "VARCHAR",
+      "precision": 32,
+      "scale": 0,
+      "nullable": 0,
+      "signed": false
+    }
+  ],
+  "rows": [
+    [
+      {
+        "kind": "text",
+        "value": "fp_audit_schema_db_first1"
+      },
+      {
+        "kind": "text",
+        "value": "ONLY_FULL_GROUP_BY,STRICT_ALL_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION"
+      },
+      {
+        "kind": "text",
+        "value": "CREATE DEFINER=`fp_m_ad04712552860810e5c383d6_a`@`127.0.0.1` PROCEDURE `fp_audit_schema_db_first1`()\n    READS SQL DATA\n    COMMENT 'FP script-publication1 exact24/72 metadata audit; SELECT-only body'\nBEGIN\n  DECLARE fp_bad BIGINT DEFAULT 0;\n  DECLARE fp_account_count BIGINT DEFAULT 0;\n  DECLARE fp_mandatory_roles TEXT DEFAULT '';\n  SELECT COUNT(*),COALESCE(SUM(u.account_locked='Y'),0) INTO fp_account_count,fp_bad\n   FROM mysql.user u WHERE (BINARY u.User=BINARY 'fp_m_ad04712552860810e5c383d6_g' AND BINARY u.Host=BINARY '127.0.0.1') OR (BINARY u.User=BINARY 'fp_m_ad04712552860810e5c383d6_a' AND BINARY u.Host=BINARY '127.0.0.1') OR (BINARY u.User=BINARY 'fp_m_ad04712552860810e5c383d6_p' AND BINARY u.Host=BINARY '127.0.0.1') OR (BINARY u.User=BINARY 'fp_m_ad04712552860810e5c383d6_i' AND BINARY u.Host=BINARY '127.0.0.1') OR (BINARY u.User=BINARY 'fp_m_ad04712552860810e5c383d6_q' AND BINARY u.Host=BINARY '127.0.0.1');\n  IF fp_account_count<>5 OR fp_bad<>5 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='all five non-runtime schema5 helper accounts must exist and remain locked'; END IF;\n  SELECT COUNT(*) INTO fp_bad FROM mysql.role_edges r\n   WHERE r.TO_USER IN ('fp_m_ad04712552860810e5c383d6_g','fp_m_ad04712552860810e5c383d6_a','fp_m_ad04712552860810e5c383d6_r','fp_m_ad04712552860810e5c383d6_p','fp_m_ad04712552860810e5c383d6_i','fp_m_ad04712552860810e5c383d6_q');\n  IF fp_bad<>0 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='schema5 account has a direct or inherited role edge'; END IF;\n  SELECT COUNT(*) INTO fp_bad FROM mysql.default_roles r\n   WHERE r.USER IN ('fp_m_ad04712552860810e5c383d6_g','fp_m_ad04712552860810e5c383d6_a','fp_m_ad04712552860810e5c383d6_r','fp_m_ad04712552860810e5c383d6_p','fp_m_ad04712552860810e5c383d6_i','fp_m_ad04712552860810e5c383d6_q');\n  IF fp_bad<>0 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='schema5 account has an enabled default role'; END IF;\n  SELECT COUNT(*) INTO fp_bad FROM mysql.procs_priv p\n   WHERE p.User IN ('fp_m_ad04712552860810e5c383d6_g','fp_m_ad04712552860810e5c383d6_a','fp_m_ad04712552860810e5c383d6_r','fp_m_ad04712552860810e5c383d6_p','fp_m_ad04712552860810e5c383d6_i','fp_m_ad04712552860810e5c383d6_q') AND NOT ((BINARY p.User=BINARY 'fp_m_ad04712552860810e5c383d6_a' AND BINARY p.Host=BINARY '127.0.0.1' AND BINARY p.Db=BINARY 'floatingpodrbssv1' AND BINARY p.Routine_name=BINARY 'fp_audit_schema_db_first1' AND p.Routine_type='PROCEDURE' AND p.Proc_priv='Execute') OR (BINARY p.User=BINARY 'fp_m_ad04712552860810e5c383d6_r' AND BINARY p.Host=BINARY '127.0.0.1' AND BINARY p.Db=BINARY 'floatingpodrbssv1' AND BINARY p.Routine_name=BINARY 'fp_audit_schema_db_first1' AND p.Routine_type='PROCEDURE' AND p.Proc_priv='Execute'));\n  IF fp_bad<>0 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='schema5 has an unapproved direct routine privilege'; END IF;\n  SELECT COUNT(*) INTO fp_bad FROM mysql.procs_priv p\n   WHERE p.User IN ('fp_m_ad04712552860810e5c383d6_g','fp_m_ad04712552860810e5c383d6_a','fp_m_ad04712552860810e5c383d6_r','fp_m_ad04712552860810e5c383d6_p','fp_m_ad04712552860810e5c383d6_i','fp_m_ad04712552860810e5c383d6_q') AND ((BINARY p.User=BINARY 'fp_m_ad04712552860810e5c383d6_a' AND BINARY p.Host=BINARY '127.0.0.1' AND BINARY p.Db=BINARY 'floatingpodrbssv1' AND BINARY p.Routine_name=BINARY 'fp_audit_schema_db_first1' AND p.Routine_type='PROCEDURE' AND p.Proc_priv='Execute') OR (BINARY p.User=BINARY 'fp_m_ad04712552860810e5c383d6_r' AND BINARY p.Host=BINARY '127.0.0.1' AND BINARY p.Db=BINARY 'floatingpodrbssv1' AND BINARY p.Routine_name=BINARY 'fp_audit_schema_db_first1' AND p.Routine_type='PROCEDURE' AND p.Proc_priv='Execute'));\n  IF fp_bad<>2 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='schema5 audit routine requires exact definer/runtime EXECUTE grants'; END IF;\n  SET fp_mandatory_roles=COALESCE(@@GLOBAL.mandatory_roles,'');\n  IF fp_mandatory_roles<>'' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='server mandatory_roles must be empty for schema5'; END IF;\n  SELECT COUNT(*) INTO fp_bad FROM mysql.proxies_priv p\n   WHERE (p.User IS NULL OR p.Host IS NULL OR p.Proxied_user IS NULL OR p.Proxied_host IS NULL OR p.With_grant IS NULL OR\n    p.User='' OR p.Proxied_user='' OR p.User IN ('fp_m_ad04712552860810e5c383d6_g','fp_m_ad04712552860810e5c383d6_a','fp_m_ad04712552860810e5c383d6_r','fp_m_ad04712552860810e5c383d6_p','fp_m_ad04712552860810e5c383d6_i','fp_m_ad04712552860810e5c383d6_q') OR p.Proxied_user IN ('fp_m_ad04712552860810e5c383d6_g','fp_m_ad04712552860810e5c383d6_a','fp_m_ad04712552860810e5c383d6_r','fp_m_ad04712552860810e5c383d6_p','fp_m_ad04712552860810e5c383d6_i','fp_m_ad04712552860810e5c383d6_q') OR\n    LOCATE('%',p.User)>0 OR LOCATE('_',p.User)>0 OR LOCATE(CHAR(92),p.User)>0 OR\n    LOCATE('%',p.Proxied_user)>0 OR LOCATE('_',p.Proxied_user)>0 OR LOCATE(CHAR(92),p.Proxied_user)>0)\n    AND NOT ((BINARY p.User=BINARY 'root' AND BINARY p.Host=BINARY 'localhost' AND BINARY p.Proxied_user=BINARY '' AND BINARY p.Proxied_host=BINARY '' AND p.With_grant=1));\n  IF fp_bad<>0 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='schema5 encountered unapproved, wildcard or ambiguous proxy delegation'; END IF;\n  SELECT @@server_uuid AS server_uuid, @@version AS server_version,\n    CONNECTION_ID() AS connection_id, CURRENT_USER() AS audit_definer,\n    USER() AS connected_caller, CURRENT_ROLE() AS effective_roles,\n    DATABASE() AS routine_default_schema, UTC_TIMESTAMP(6) AS observed_db_time,\n    'floatingpodrbssv1' AS audited_schema,\n    m.singleton_fixed1, m.backend, m.format_version, m.ddl_sha256, m.provisioning_uuid,\n    m.bootstrap_state, m.expected_server_uuid, m.expected_binding_uuid,\n    m.import_state, m.import_operation_uuid, m.import_manifest_sha256,\n    m.import_snapshot_sha256, m.import_receipt_sha256, m.guard_manifest_sha256,\n    m.configuration_sha256, m.source_provenance_kind, m.source_provenance_bytes, m.source_provenance_sha256, m.limit_profile_encoding, m.limit_profile_bytes, m.limit_profile_sha256, m.max_region_bytes, m.max_chunk_bytes, m.max_decompressed_bytes, m.max_nbt_depth, m.max_members, m.max_retained_bytes, m.max_sql_packet_bytes, m.max_native_artifact_bytes\n  FROM `floatingpodrbssv1`.`fp_schema_manifest` AS m WHERE m.singleton_fixed1=1;\n  SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, ENGINE, VERSION, ROW_FORMAT,\n    TABLE_COLLATION, CREATE_OPTIONS, TABLE_COMMENT\n  FROM INFORMATION_SCHEMA.TABLES\n  WHERE CAST(TABLE_SCHEMA AS BINARY)=CAST('floatingpodrbssv1' AS BINARY)\n  ORDER BY CAST(TABLE_NAME AS BINARY);\n  SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, COLUMN_DEFAULT,\n    IS_NULLABLE, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, CHARACTER_OCTET_LENGTH,\n    NUMERIC_PRECISION, NUMERIC_SCALE, DATETIME_PRECISION, CHARACTER_SET_NAME,\n    COLLATION_NAME, COLUMN_TYPE, COLUMN_KEY, EXTRA, COLUMN_COMMENT, GENERATION_EXPRESSION\n  FROM INFORMATION_SCHEMA.COLUMNS\n  WHERE CAST(TABLE_SCHEMA AS BINARY)=CAST('floatingpodrbssv1' AS BINARY)\n  ORDER BY CAST(TABLE_NAME AS BINARY), ORDINAL_POSITION;\n  SELECT TABLE_SCHEMA, TABLE_NAME, NON_UNIQUE, INDEX_SCHEMA, INDEX_NAME,\n    SEQ_IN_INDEX, COLUMN_NAME, COLLATION, SUB_PART, PACKED, NULLABLE,\n    INDEX_TYPE, COMMENT, INDEX_COMMENT, IS_VISIBLE, EXPRESSION\n  FROM INFORMATION_SCHEMA.STATISTICS\n  WHERE CAST(TABLE_SCHEMA AS BINARY)=CAST('floatingpodrbssv1' AS BINARY)\n  ORDER BY CAST(TABLE_NAME AS BINARY), CAST(INDEX_NAME AS BINARY), SEQ_IN_INDEX;\n  SELECT CONSTRAINT_CATALOG, CONSTRAINT_SCHEMA, CONSTRAINT_NAME,\n    TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_TYPE, ENFORCED\n  FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS\n  WHERE CAST(TABLE_SCHEMA AS BINARY)=CAST('floatingpodrbssv1' AS BINARY)\n  ORDER BY CAST(TABLE_NAME AS BINARY), CAST(CONSTRAINT_NAME AS BINARY), CONSTRAINT_TYPE;\n  SELECT CONSTRAINT_CATALOG, CONSTRAINT_SCHEMA, CONSTRAINT_NAME, TABLE_CATALOG,\n    TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, POSITION_IN_UNIQUE_CONSTRAINT,\n    REFERENCED_TABLE_SCHEMA, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME\n  FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE\n  WHERE CAST(TABLE_SCHEMA AS BINARY)=CAST('floatingpodrbssv1' AS BINARY)\n  ORDER BY CAST(TABLE_NAME AS BINARY), CAST(CONSTRAINT_NAME AS BINARY), ORDINAL_POSITION;\n  SELECT CONSTRAINT_CATALOG, CONSTRAINT_SCHEMA, CONSTRAINT_NAME,\n    UNIQUE_CONSTRAINT_CATALOG, UNIQUE_CONSTRAINT_SCHEMA, UNIQUE_CONSTRAINT_NAME,\n    MATCH_OPTION, UPDATE_RULE, DELETE_RULE, TABLE_NAME, REFERENCED_TABLE_NAME\n  FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS\n  WHERE CAST(CONSTRAINT_SCHEMA AS BINARY)=CAST('floatingpodrbssv1' AS BINARY)\n  ORDER BY CAST(TABLE_NAME AS BINARY), CAST(CONSTRAINT_NAME AS BINARY);\n  SELECT CONSTRAINT_CATALOG, CONSTRAINT_SCHEMA, CONSTRAINT_NAME, CHECK_CLAUSE,\n    OCTET_LENGTH(CHECK_CLAUSE) AS clause_octets,\n    UNHEX(SHA2(CAST(CHECK_CLAUSE AS BINARY),256)) AS clause_sha256\n  FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS\n  WHERE CAST(CONSTRAINT_SCHEMA AS BINARY)=CAST('floatingpodrbssv1' AS BINARY)\n  ORDER BY CAST(CONSTRAINT_NAME AS BINARY);\n  SELECT TRIGGER_SCHEMA, TRIGGER_NAME, EVENT_OBJECT_SCHEMA, EVENT_OBJECT_TABLE,\n    EVENT_MANIPULATION, ACTION_TIMING, ACTION_ORDER, ACTION_ORIENTATION,\n    ACTION_STATEMENT, SQL_MODE, DEFINER, CHARACTER_SET_CLIENT,\n    COLLATION_CONNECTION, DATABASE_COLLATION,\n    OCTET_LENGTH(ACTION_STATEMENT) AS statement_octets,\n    UNHEX(SHA2(CAST(ACTION_STATEMENT AS BINARY),256)) AS statement_sha256\n  FROM INFORMATION_SCHEMA.TRIGGERS\n  WHERE CAST(TRIGGER_SCHEMA AS BINARY)=CAST('floatingpodrbssv1' AS BINARY)\n  ORDER BY CAST(TRIGGER_NAME AS BINARY);\n  SELECT ROUTINE_SCHEMA, ROUTINE_NAME, ROUTINE_TYPE, ROUTINE_DEFINITION,\n    SECURITY_TYPE, SQL_DATA_ACCESS, SQL_MODE, DEFINER, CHARACTER_SET_CLIENT,\n    COLLATION_CONNECTION, DATABASE_COLLATION, IS_DETERMINISTIC,\n    DATA_TYPE, DTD_IDENTIFIER, ROUTINE_COMMENT,\n    OCTET_LENGTH(ROUTINE_DEFINITION) AS definition_octets,\n    UNHEX(SHA2(CAST(ROUTINE_DEFINITION AS BINARY),256)) AS definition_sha256\n  FROM INFORMATION_SCHEMA.ROUTINES\n  WHERE CAST(ROUTINE_SCHEMA AS BINARY)=CAST('floatingpodrbssv1' AS BINARY)\n  ORDER BY CAST(ROUTINE_NAME AS BINARY), ROUTINE_TYPE;\n  SELECT SPECIFIC_CATALOG, SPECIFIC_SCHEMA, SPECIFIC_NAME, ORDINAL_POSITION,\n    PARAMETER_MODE, PARAMETER_NAME, DATA_TYPE, DTD_IDENTIFIER,\n    CHARACTER_SET_NAME, COLLATION_NAME\n  FROM INFORMATION_SCHEMA.PARAMETERS\n  WHERE CAST(SPECIFIC_SCHEMA AS BINARY)=CAST('floatingpodrbssv1' AS BINARY)\n    AND CAST(SPECIFIC_NAME AS BINARY)=CAST('fp_audit_schema_db_first1' AS BINARY)\n  ORDER BY CAST(SPECIFIC_NAME AS BINARY), ORDINAL_POSITION;\n  SELECT singleton_fixed1, binding_uuid, cutover_state, format_version\n  FROM `floatingpodrbssv1`.`physical_recovery_binding` ORDER BY singleton_fixed1;\n  SELECT singleton_fixed1, binding_uuid, writer_epoch, owner_boot_uuid,\n    lease_until, last_commit_operation_uuid, last_commit_fingerprint\n  FROM `floatingpodrbssv1`.`fp_runtime_writer` ORDER BY singleton_fixed1;\n  SELECT @@server_uuid AS server_uuid, @@version AS server_version,\n    CONNECTION_ID() AS connection_id, CURRENT_USER() AS audit_definer,\n    USER() AS connected_caller, CURRENT_ROLE() AS effective_roles,\n    DATABASE() AS routine_default_schema, UTC_TIMESTAMP(6) AS observed_db_time,\n    'floatingpodrbssv1' AS audited_schema,\n    m.singleton_fixed1, m.backend, m.format_version, m.ddl_sha256, m.provisioning_uuid,\n    m.bootstrap_state, m.expected_server_uuid, m.expected_binding_uuid,\n    m.import_state, m.import_operation_uuid, m.import_manifest_sha256,\n    m.import_snapshot_sha256, m.import_receipt_sha256, m.guard_manifest_sha256,\n    m.configuration_sha256, m.source_provenance_kind, m.source_provenance_bytes, m.source_provenance_sha256, m.limit_profile_encoding, m.limit_profile_bytes, m.limit_profile_sha256, m.max_region_bytes, m.max_chunk_bytes, m.max_decompressed_bytes, m.max_nbt_depth, m.max_members, m.max_retained_bytes, m.max_sql_packet_bytes, m.max_native_artifact_bytes\n  FROM `floatingpodrbssv1`.`fp_schema_manifest` AS m WHERE m.singleton_fixed1=1;\n  SELECT GRANTEE,TABLE_CATALOG,TABLE_SCHEMA,TABLE_NAME,PRIVILEGE_TYPE,IS_GRANTABLE\n   FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES\n   WHERE GRANTEE IN ('''fp_m_ad04712552860810e5c383d6_g''@''127.0.0.1''','''fp_m_ad04712552860810e5c383d6_a''@''127.0.0.1''','''fp_m_ad04712552860810e5c383d6_r''@''127.0.0.1''','''fp_m_ad04712552860810e5c383d6_p''@''127.0.0.1''','''fp_m_ad04712552860810e5c383d6_i''@''127.0.0.1''','''fp_m_ad04712552860810e5c383d6_q''@''127.0.0.1''')\n   ORDER BY CAST(GRANTEE AS BINARY),CAST(TABLE_SCHEMA AS BINARY),CAST(TABLE_NAME AS BINARY),CAST(PRIVILEGE_TYPE AS BINARY);\n  SELECT GRANTEE,TABLE_CATALOG,TABLE_SCHEMA,TABLE_NAME,COLUMN_NAME,PRIVILEGE_TYPE,IS_GRANTABLE\n   FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES\n   WHERE GRANTEE IN ('''fp_m_ad04712552860810e5c383d6_g''@''127.0.0.1''','''fp_m_ad04712552860810e5c383d6_a''@''127.0.0.1''','''fp_m_ad04712552860810e5c383d6_r''@''127.0.0.1''','''fp_m_ad04712552860810e5c383d6_p''@''127.0.0.1''','''fp_m_ad04712552860810e5c383d6_i''@''127.0.0.1''','''fp_m_ad04712552860810e5c383d6_q''@''127.0.0.1''')\n   ORDER BY CAST(GRANTEE AS BINARY),CAST(TABLE_SCHEMA AS BINARY),CAST(TABLE_NAME AS BINARY),CAST(COLUMN_NAME AS BINARY),CAST(PRIVILEGE_TYPE AS BINARY);\n  SELECT GRANTEE,TABLE_CATALOG,TABLE_SCHEMA,PRIVILEGE_TYPE,IS_GRANTABLE\n   FROM INFORMATION_SCHEMA.SCHEMA_PRIVILEGES\n   WHERE GRANTEE IN ('''fp_m_ad04712552860810e5c383d6_g''@''127.0.0.1''','''fp_m_ad04712552860810e5c383d6_a''@''127.0.0.1''','''fp_m_ad04712552860810e5c383d6_r''@''127.0.0.1''','''fp_m_ad04712552860810e5c383d6_p''@''127.0.0.1''','''fp_m_ad04712552860810e5c383d6_i''@''127.0.0.1''','''fp_m_ad04712552860810e5c383d6_q''@''127.0.0.1''')\n   ORDER BY CAST(PRIVILEGE_TYPE AS BINARY);\n  SELECT GRANTEE,TABLE_CATALOG,PRIVILEGE_TYPE,IS_GRANTABLE\n   FROM INFORMATION_SCHEMA.USER_PRIVILEGES WHERE GRANTEE IN ('''fp_m_ad04712552860810e5c383d6_g''@''127.0.0.1''','''fp_m_ad04712552860810e5c383d6_a''@''127.0.0.1''','''fp_m_ad04712552860810e5c383d6_r''@''127.0.0.1''','''fp_m_ad04712552860810e5c383d6_p''@''127.0.0.1''','''fp_m_ad04712552860810e5c383d6_i''@''127.0.0.1''','''fp_m_ad04712552860810e5c383d6_q''@''127.0.0.1''')\n   ORDER BY CAST(PRIVILEGE_TYPE AS BINARY);\nEND"
+      },
+      {
+        "kind": "text",
+        "value": "utf8mb4"
+      },
+      {
+        "kind": "text",
+        "value": "utf8mb4_0900_bin"
+      },
+      {
+        "kind": "text",
+        "value": "utf8mb4_0900_bin"
+      }
+    ]
+  ]
+}

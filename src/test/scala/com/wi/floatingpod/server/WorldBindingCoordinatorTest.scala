@@ -62,6 +62,31 @@ class WorldBindingCoordinatorTest:
       assertEquals(None, repository.findPhysicalRecoveryLocator(bindingUuid).get)
     finally repository.close()
 
+  @Test
+  def productionBarrierPublishesTheExactMarkerAndReplaysIdempotentlyUnderADeterministicToken(): Unit =
+    val database = Files.createTempDirectory("floatingpod-world-binding-production-barrier").resolve("pods.db")
+    val markerParent = Files.createTempDirectory("floatingpod-world-binding-production-marker-parent")
+    val marker = markerParent.resolve("floatingpod-world-binding.bin")
+    val folderName = "Dim-Transit-Station"
+    val bindingUuid = WorldBindingBootstrap.bindingTokenFor(folderName)
+    val repository = new SQLiteFloatingPodRepository(database.toString)
+    val coordinator = new WorldBindingCoordinator(repository, FileSystemCanonicalMarkerPublicationBarrier)
+    try
+      assertEquals(bindingUuid, WorldBindingBootstrap.bindingTokenFor(folderName))
+      assertFalse(bindingUuid == WorldBindingBootstrap.bindingTokenFor("Another-World"))
+      assertEquals(1, WorldBindingBootstrap.InitialFormatVersion)
+      val expected = ValidatedWorldBinding(PhysicalRecoveryBinding(bindingUuid, PhysicalRecoveryCutoverState.Certified, 1), marker)
+
+      assertEquals(expected, coordinator.prepareAndCertify(bindingUuid, WorldBindingBootstrap.InitialFormatVersion, marker).get)
+      assertEquals(24L, Files.size(marker))
+      val createdAt = Files.getLastModifiedTime(marker)
+
+      assertEquals(expected, coordinator.prepareAndCertify(bindingUuid, WorldBindingBootstrap.InitialFormatVersion, marker).get)
+      assertEquals(createdAt, Files.getLastModifiedTime(marker))
+      assertEquals(Some(expected.binding), repository.findPhysicalRecoveryBinding().get)
+      assertEquals(Nil, repository.findAll().get)
+    finally repository.close()
+
   private def expectedMarker: Array[Byte] = Array[Byte](
     0x46, 0x50, 0x57, 0x42,
     0x00, 0x00, 0x00, 0x01,

@@ -20,12 +20,36 @@ import java.util.UUID
  * 直接验证初始 migration 的版本记录和重复应用行为。
  */
 class SchemaManagerTest:
-  /** 验证空数据库按顺序应用 V001 至 V004 并记录版本。 */
+  @Test
+  def migratesLegacyOperatingModesWithoutLosingOwnershipOrLegacyDimension(): Unit = withConnection { connection =>
+    applyV001Only(connection)
+    applyV002Only(connection)
+    val ownedActive = "00000000-0000-0000-0000-000000000041"
+    val unclaimedActive = "00000000-0000-0000-0000-000000000042"
+    val unclaimedInactive = "00000000-0000-0000-0000-000000000043"
+    val owner = "11111111-1111-1111-1111-111111111111"
+    insertLegacyState(connection, ownedActive, Some(owner))
+    insertLegacyState(connection, unclaimedActive, None)
+    insertLegacyState(connection, unclaimedInactive, None)
+    execute(connection, "UPDATE floating_pod_state SET is_active = 1 WHERE uuid = ?", UUID.fromString(ownedActive))
+    execute(connection, "UPDATE floating_pod_state SET is_active = 1 WHERE uuid = ?", UUID.fromString(unclaimedActive))
+
+    SchemaManager.applyMigrations(connection)
+
+    assertEquals(6, currentVersion(connection))
+    assertEquals("NORMAL", operatingMode(connection, UUID.fromString(ownedActive)))
+    assertEquals("WORLD_IDLE", operatingMode(connection, UUID.fromString(unclaimedActive)))
+    assertEquals("NORMAL", operatingMode(connection, UUID.fromString(unclaimedInactive)))
+    assertEquals(1, countRows(connection, "SELECT COUNT(*) FROM floating_pod_state WHERE uuid = ? AND is_active = 1 AND dimension_id IS NULL", UUID.fromString(unclaimedActive)))
+  }
+
+  /** 验证空数据库按顺序应用 V001 至 V005 并记录版本。 */
   @Test
   def appliesInitialSchema(): Unit = withConnection { connection =>
     SchemaManager.applyMigrations(connection)
-    assertEquals(4, schemaVersionCount(connection))
-    assertEquals(4, currentVersion(connection))
+    assertEquals(6, schemaVersionCount(connection))
+    assertEquals(6, currentVersion(connection))
+    assertTrue(columnExists(connection, "floating_pod_state", "operating_mode"))
   }
 
   /** 验证已记录版本再次执行时不会重复写入 schema_version。 */
@@ -33,7 +57,7 @@ class SchemaManagerTest:
   def appliesInitialSchemaIdempotently(): Unit = withConnection { connection =>
     SchemaManager.applyMigrations(connection)
     SchemaManager.applyMigrations(connection)
-    assertEquals(4, schemaVersionCount(connection))
+    assertEquals(6, schemaVersionCount(connection))
   }
 
   /** 验证 V002 增加维度和默认权益，并仅为既有所有者补齐一次默认记录。 */
@@ -47,8 +71,8 @@ class SchemaManagerTest:
     SchemaManager.applyMigrations(connection)
     SchemaManager.applyMigrations(connection)
 
-    assertEquals(4, currentVersion(connection))
-    assertEquals(4, schemaVersionCount(connection))
+    assertEquals(6, currentVersion(connection))
+    assertEquals(6, schemaVersionCount(connection))
     assertTrue(columnExists(connection, "floating_pod_state", "dimension_id"))
     assertEquals(1, entitlementCount(connection))
     assertEquals((1, 1), entitlementFor(connection, UUID.fromString("11111111-1111-1111-1111-111111111111")))
@@ -126,11 +150,15 @@ class SchemaManagerTest:
     SchemaManager.applyMigrations(connection)
     SchemaManager.applyMigrations(connection)
 
-    assertEquals(4, currentVersion(connection))
+    assertEquals(6, currentVersion(connection))
     assertEquals(1, countRows(connection, "SELECT COUNT(*) FROM floating_pod_state WHERE uuid = ? AND is_active = 1 AND dimension_id IS NULL", legacy))
+    assertEquals("WORLD_IDLE", operatingMode(connection, legacy))
+    assertThrows(classOf[SQLException], () => executeSql(connection,
+      "INSERT INTO floating_pod_state (uuid, owner_uuid, state_version, world_name, pos_x, pos_y, pos_z, yaw, pitch, is_active, last_updated, dimension_id, operating_mode) VALUES (X'00000000000000000000000000000025', X'11111111111111111111111111111111', 0, 'overworld', 0, 64, 0, 0, 0, 1, 1, 7, 'NORMAL')"))
     assertThrows(classOf[SQLException], () => execute(connection, "UPDATE floating_pod_state SET world_name = 'blocked' WHERE uuid = ?", legacy))
     assertThrows(classOf[SQLException], () => execute(connection, "DELETE FROM floating_pod_state WHERE uuid = ?", legacy))
     assertEquals(1, execute(connection, "UPDATE floating_pod_state SET dimension_id = 7 WHERE uuid = ?", legacy))
+    assertThrows(classOf[SQLException], () => execute(connection, "UPDATE floating_pod_state SET operating_mode = 'NORMAL' WHERE uuid = ?", legacy))
     assertEquals(1, execute(connection, "UPDATE floating_pod_state SET is_active = 0 WHERE uuid = ?", legacy))
   }
 
@@ -138,7 +166,7 @@ class SchemaManagerTest:
   def installsPhysicalRecoveryObligationsWithoutAutoseedingRows(): Unit = withConnection { connection =>
     SchemaManager.applyMigrations(connection)
 
-    assertEquals(4, currentVersion(connection))
+    assertEquals(6, currentVersion(connection))
     assertTrue(tableExists(connection, "physical_recovery_binding"))
     assertTrue(tableExists(connection, "physical_recovery_locator"))
     assertTrue(tableExists(connection, "physical_recovery_locator_chunk"))
@@ -162,6 +190,45 @@ class SchemaManagerTest:
     insertChunk(connection, pod, 7, 2, -1)
     assertEquals("NO ACTION", foreignKeyDeleteAction(connection, "physical_recovery_locator_chunk"))
     assertThrows(classOf[SQLException], () => execute(connection, "DELETE FROM physical_recovery_locator WHERE pod_uuid = ?", pod))
+  }
+
+  @Test
+  def v006AddsDurableUnboundIntentStorage(): Unit = withConnection { connection =>
+    SchemaManager.applyMigrations(connection)
+
+    assertEquals(6, currentVersion(connection))
+    assertTrue(tableExists(connection, "physical_recovery_intent"))
+    assertTrue(tableExists(connection, "physical_recovery_locator_chunk"))
+    assertTrue(columnExists(connection, "physical_recovery_intent", "catalog_generation"))
+    assertTrue(columnExists(connection, "physical_recovery_intent", "create_operation_uuid"))
+  }
+
+  @Test
+  def rebuildsV005LocatorParentAndChildWhilePreservingEveryExistingRowAndForeignKey(): Unit = withConnection { connection =>
+    createV005LocatorFixture(connection)
+
+    SchemaManager.applyMigrations(connection)
+
+    assertEquals(6, currentVersion(connection))
+    assertEquals(
+      List(
+        "00000000000000000000000000000041|00000000000000000000000000000051|CREATE_PREPARED|create_prepared|4|7",
+        "00000000000000000000000000000042|00000000000000000000000000000052|LEGACY_UNCERTIFIED|legacy_source|9|-2147483648"
+      ),
+      locatorRows(connection)
+    )
+    assertEquals(
+      List(
+        "00000000000000000000000000000041|7|-2|3",
+        "00000000000000000000000000000041|7|-1|3",
+        "00000000000000000000000000000042|-1|8|-4"
+      ),
+      locatorChunkRows(connection)
+    )
+    assertEquals("NO ACTION", foreignKeyDeleteAction(connection, "physical_recovery_locator_chunk"))
+    assertEquals(0, countRows(connection, "SELECT COUNT(*) FROM pragma_foreign_key_check"))
+    assertTrue(indexExists(connection, "idx_physical_recovery_locator_chunk_dimension"))
+    assertThrows(classOf[SQLException], () => execute(connection, "DELETE FROM physical_recovery_locator WHERE pod_uuid = ?", UUID.fromString("00000000-0000-0000-0000-000000000041")))
   }
 
   private def withConnection(body: Connection => Unit): Unit =
@@ -254,6 +321,17 @@ class SchemaManagerTest:
       finally resultSet.close()
     finally statement.close()
 
+  private def operatingMode(connection: Connection, podUuid: UUID): String =
+    val statement = connection.prepareStatement("SELECT operating_mode FROM floating_pod_state WHERE uuid = ?")
+    try
+      statement.setBytes(1, uuidBytes(podUuid))
+      val resultSet = statement.executeQuery()
+      try
+        assertTrue(resultSet.next())
+        resultSet.getString(1)
+      finally resultSet.close()
+    finally statement.close()
+
   private def columnExists(connection: Connection, tableName: String, columnName: String): Boolean =
     val statement = connection.createStatement()
     try
@@ -329,4 +407,63 @@ class SchemaManagerTest:
         assertTrue(resultSet.next())
         resultSet.getString("on_delete")
       finally resultSet.close()
+    finally statement.close()
+
+  private def createV005LocatorFixture(connection: Connection): Unit =
+    executeSql(connection, "PRAGMA foreign_keys = ON")
+    executeSql(connection, "CREATE TABLE schema_version (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL, description TEXT NOT NULL)")
+    (1 to 5).foreach(version => execute(connection, "INSERT INTO schema_version (version, applied_at, description) VALUES (?, 10, ?)", version, s"V$version"))
+    executeSql(connection, "CREATE TABLE floating_pod_state (uuid BLOB PRIMARY KEY NOT NULL, owner_uuid BLOB, state_version INTEGER NOT NULL, world_name TEXT NOT NULL, pos_x REAL NOT NULL, pos_y REAL NOT NULL, pos_z REAL NOT NULL, yaw REAL NOT NULL, pitch REAL NOT NULL, is_active INTEGER NOT NULL, last_updated INTEGER NOT NULL, dimension_id INTEGER, operating_mode TEXT NOT NULL)")
+    executeSql(connection, "CREATE TABLE physical_recovery_binding (singleton_fixed1 INTEGER PRIMARY KEY NOT NULL, binding_uuid BLOB NOT NULL UNIQUE, cutover_state TEXT NOT NULL, format_version INTEGER NOT NULL)")
+    executeSql(connection, "CREATE TABLE physical_recovery_locator (pod_uuid BLOB PRIMARY KEY NOT NULL, attempt_uuid BLOB NOT NULL UNIQUE, locator_state TEXT NOT NULL, reason_code TEXT NOT NULL, domain_version INTEGER, target_dimension_id INTEGER)")
+    executeSql(connection, "CREATE TABLE physical_recovery_locator_chunk (pod_uuid BLOB NOT NULL, dimension_id INTEGER NOT NULL, chunk_x INTEGER NOT NULL, chunk_z INTEGER NOT NULL, PRIMARY KEY(pod_uuid, dimension_id, chunk_x, chunk_z), FOREIGN KEY(pod_uuid) REFERENCES physical_recovery_locator(pod_uuid))")
+    executeSql(connection, "CREATE INDEX idx_physical_recovery_locator_chunk_dimension ON physical_recovery_locator_chunk(dimension_id, chunk_x, chunk_z)")
+    executeSql(connection, "INSERT INTO physical_recovery_binding (singleton_fixed1, binding_uuid, cutover_state, format_version) VALUES (1, X'00000000000000000000000000000061', 'CERTIFIED', 1)")
+    executeSql(connection, "INSERT INTO floating_pod_state (uuid, owner_uuid, state_version, world_name, pos_x, pos_y, pos_z, yaw, pitch, is_active, last_updated, dimension_id, operating_mode) VALUES (X'00000000000000000000000000000041', NULL, 4, 'overworld', 1, 64, 2, 3, 4, 0, 100, 7, 'WORLD_IDLE')")
+    executeSql(connection, "INSERT INTO floating_pod_state (uuid, owner_uuid, state_version, world_name, pos_x, pos_y, pos_z, yaw, pitch, is_active, last_updated, dimension_id, operating_mode) VALUES (X'00000000000000000000000000000042', NULL, 9, 'the_end', -1, 80, 8, 90, -15, 0, 200, -2147483648, 'NORMAL')")
+    executeSql(connection, "INSERT INTO physical_recovery_locator VALUES (X'00000000000000000000000000000041', X'00000000000000000000000000000051', 'CREATE_PREPARED', 'create_prepared', 4, 7)")
+    executeSql(connection, "INSERT INTO physical_recovery_locator VALUES (X'00000000000000000000000000000042', X'00000000000000000000000000000052', 'LEGACY_UNCERTIFIED', 'legacy_source', 9, -2147483648)")
+    executeSql(connection, "INSERT INTO physical_recovery_locator_chunk VALUES (X'00000000000000000000000000000041', 7, -2, 3)")
+    executeSql(connection, "INSERT INTO physical_recovery_locator_chunk VALUES (X'00000000000000000000000000000041', 7, -1, 3)")
+    executeSql(connection, "INSERT INTO physical_recovery_locator_chunk VALUES (X'00000000000000000000000000000042', -1, 8, -4)")
+
+  private def locatorRows(connection: Connection): List[String] =
+    val statement = connection.createStatement()
+    try
+      val resultSet = statement.executeQuery("SELECT lower(hex(pod_uuid)), lower(hex(attempt_uuid)), locator_state, reason_code, domain_version, target_dimension_id FROM physical_recovery_locator ORDER BY pod_uuid")
+      try
+        val rows = List.newBuilder[String]
+        while resultSet.next() do rows += s"${resultSet.getString(1)}|${resultSet.getString(2)}|${resultSet.getString(3)}|${resultSet.getString(4)}|${resultSet.getString(5)}|${resultSet.getString(6)}"
+        rows.result()
+      finally resultSet.close()
+    finally statement.close()
+
+  private def locatorChunkRows(connection: Connection): List[String] =
+    val statement = connection.createStatement()
+    try
+      val resultSet = statement.executeQuery("SELECT lower(hex(pod_uuid)), dimension_id, chunk_x, chunk_z FROM physical_recovery_locator_chunk ORDER BY pod_uuid, dimension_id, chunk_x, chunk_z")
+      try
+        val rows = List.newBuilder[String]
+        while resultSet.next() do rows += s"${resultSet.getString(1)}|${resultSet.getInt(2)}|${resultSet.getInt(3)}|${resultSet.getInt(4)}"
+        rows.result()
+      finally resultSet.close()
+    finally statement.close()
+
+  private def indexExists(connection: Connection, indexName: String): Boolean =
+    val statement = connection.prepareStatement("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = ?")
+    try
+      statement.setString(1, indexName)
+      val resultSet = statement.executeQuery()
+      try
+        resultSet.next()
+        resultSet.getInt(1) == 1
+      finally resultSet.close()
+    finally statement.close()
+
+  private def execute(connection: Connection, sql: String, version: Int, description: String): Int =
+    val statement = connection.prepareStatement(sql)
+    try
+      statement.setInt(1, version)
+      statement.setString(2, description)
+      statement.executeUpdate()
     finally statement.close()

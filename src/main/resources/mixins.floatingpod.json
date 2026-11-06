@@ -10,5 +10,25 @@
   ],
   "injectors": {
     "defaultRequire": 1
-  }
+  },
+  "mixins": [
+    "ForgeTicketRegistryAccessor",
+    "WorldRemovalViewAccessor",
+    "EntityTrackerRemovalViewAccessor",
+    "MinecraftServerBootstrapMixin",
+    "ManagedBootSaveAdmissionMixin",
+    "ManagedThreadedFileIoOwnerMixin",
+    "ManagedAnvilSaveMixin",
+    "ManagedAnvilSaveHandlerMixin",
+    "SourceDimensionManagerMixin",
+    "SourceAnvilReadMixin",
+    "SourceNbtCopyMixin",
+    "SourceEntityDecodeMixin",
+    "ManagedRegionSaveMixin",
+    "ManagedRegionCacheSaveMixin",
+    "SourceChunkIoExecutorMixin",
+    "SourceChunkIoProviderMixin",
+    "ManagedSourceChunkProviderSaveMixin",
+    "ManagedSourceChunkSaveStateAccess"
+  ]
 }

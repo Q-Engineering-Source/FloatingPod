@@ -18,7 +18,9 @@ object SchemaManager:
     Migration(1, "Initial schema", "/db/migration/V001__initial_schema.sql"),
     Migration(2, "Activity transition authority", "/db/migration/V002__activity_transition_authority.sql"),
     Migration(3, "Strict activity lifecycle guards", "/db/migration/V003__strict_activity_lifecycle.sql"),
-    Migration(4, "Physical recovery obligations", "/db/migration/V004__physical_recovery_obligations.sql")
+    Migration(4, "Physical recovery obligations", "/db/migration/V004__physical_recovery_obligations.sql"),
+    Migration(5, "Independent operating modes", "/db/migration/V005__independent_operating_modes.sql"),
+    Migration(6, "Durable unbound physical recovery intents", "/db/migration/V006__unbound_recovery_intents.sql")
   )
 
   /** schema_version 缺失时必须拒绝的既有 FloatingPod 内部对象，避免误把受管数据库当作新库。 */
@@ -33,10 +35,27 @@ object SchemaManager:
     "trg_floating_pod_state_reject_active_insert",
     "trg_floating_pod_state_reject_active_null_dimension",
     "trg_floating_pod_state_reject_active_delete",
+    "trg_floating_pod_state_reject_unclaimed_active_normal_insert",
+    "trg_floating_pod_state_reject_unclaimed_active_normal_update",
     "physical_recovery_binding",
     "physical_recovery_locator",
     "physical_recovery_locator_chunk",
-    "idx_physical_recovery_locator_chunk_dimension"
+    "idx_physical_recovery_locator_chunk_dimension",
+    "physical_recovery_intent",
+    "idx_physical_recovery_intent_binding",
+    "ux_physical_recovery_intent_observed_source",
+    "ux_physical_recovery_intent_create_operation",
+    "trg_floating_pod_state_reject_prepared_unbound_update",
+    "trg_floating_pod_state_reject_unbound_delete",
+    "trg_physical_recovery_locator_validate_unbound_insert",
+    "trg_physical_recovery_locator_validate_unbound_update",
+    "trg_physical_recovery_locator_reject_unbound_delete",
+    "trg_physical_recovery_locator_chunk_validate_unbound_insert",
+    "trg_physical_recovery_locator_chunk_reject_unbound_update",
+    "trg_physical_recovery_locator_chunk_reject_unbound_delete",
+    "trg_physical_recovery_intent_validate_insert",
+    "trg_physical_recovery_intent_validate_commit",
+    "trg_physical_recovery_intent_reject_delete"
   )
 
   /**
@@ -73,27 +92,23 @@ object SchemaManager:
 
     val sql = "SELECT version FROM schema_version ORDER BY version ASC"
     val statement = connection.prepareStatement(sql)
-    try
+    JdbcResource.withResource(statement):
       val resultSet = statement.executeQuery()
-      try
+      JdbcResource.withResource(resultSet):
         val versions = List.newBuilder[Int]
         while resultSet.next() do versions += resultSet.getInt(1)
         versions.result()
-      finally resultSet.close()
-    finally statement.close()
 
   private def schemaVersionTableExists(connection: Connection): Boolean =
     val tableExistsSql = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?"
     val tableExistsStatement = connection.prepareStatement(tableExistsSql)
-    try
+    JdbcResource.withResource(tableExistsStatement):
       tableExistsStatement.setString(1, "schema_version")
       val tableExistsResult = tableExistsStatement.executeQuery()
-      try
+      JdbcResource.withResource(tableExistsResult):
         if (!tableExistsResult.next()) then
           throw new IllegalStateException("sqlite_master query returned no row")
         tableExistsResult.getInt(1) == 1
-      finally tableExistsResult.close()
-    finally tableExistsStatement.close()
 
   private def validateAppliedVersions(appliedVersions: List[Int]): Unit =
     val expectedPrefix = migrations.map(_.version).take(appliedVersions.size)
@@ -106,18 +121,16 @@ object SchemaManager:
     val placeholders = List.fill(ManagedObjectNames.size)("?").mkString(", ")
     val sql = s"SELECT name FROM sqlite_master WHERE name IN ($placeholders) ORDER BY name LIMIT 1"
     val statement = connection.prepareStatement(sql)
-    try
+    JdbcResource.withResource(statement):
       ManagedObjectNames.zipWithIndex.foreach { case (name, index) =>
         statement.setString(index + 1, name)
       }
       val resultSet = statement.executeQuery()
-      try
+      JdbcResource.withResource(resultSet):
         if resultSet.next() then
           throw new IllegalStateException(
             s"SQLite database contains FloatingPod managed object ${resultSet.getString(1)} without schema_version"
           )
-      finally resultSet.close()
-    finally statement.close()
 
   private def applyMigration(
       connection: Connection,
@@ -146,14 +159,12 @@ object SchemaManager:
     val input = Option(getClass.getResourceAsStream(resourcePath)).getOrElse {
       throw new IllegalStateException(s"Missing SQLite migration resource: $resourcePath")
     }
-    try String(input.readAllBytes(), StandardCharsets.UTF_8)
-    finally input.close()
+    JdbcResource.withResource(input)(String(input.readAllBytes(), StandardCharsets.UTF_8))
 
   private def executeSqlScript(connection: Connection, script: String): Unit =
     splitSqlStatements(script).foreach { sql =>
       val statement = connection.createStatement()
-      try statement.execute(sql)
-      finally statement.close()
+      JdbcResource.withResource(statement)(statement.execute(sql))
     }
 
   private def splitSqlStatements(script: String): List[String] =

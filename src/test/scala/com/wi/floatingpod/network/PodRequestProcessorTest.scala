@@ -1,6 +1,7 @@
 package com.wi.floatingpod.network
 
 import com.wi.floatingpod.domain.{FloatingPodState, PlayerEntitlement}
+import com.wi.floatingpod.server.save.ManagedOrdinarySaveAdmission
 import com.wi.floatingpod.server.{ActiveFloatingPodManager, ActivePodEntity, AuthoritativePosition, ChunkLoadingManager, ChunkTicket, ChunkTicketGateway, OwnershipValidator, PodWorld, PositionValidation, PositionValidator, ReleasePosition, ReleasePositionPolicy}
 import com.wi.floatingpod.storage.{FloatingPodRepository, PlayerEntitlementStore, RecoveryDimensionBackfillOutcome, RecoveryPodStore, StoredPodRow}
 
@@ -16,6 +17,75 @@ import scala.util.{Failure, Success, Try}
 
 /** M4 request processor 的公开行为 tracer。 */
 class PodRequestProcessorTest:
+  @Test
+  def pendingReadRejectsBeforeAnyLifecycleAndDoesNotLogInfrastructureFailure(): Unit =
+    val pending = actualPendingRead()
+    val ownershipFixture = releaseFixture(repositoryResult = Failure(pending))
+    assertRejected(ownershipFixture.processor.release(request, player), ReleaseFailureReason.Busy,
+      ownershipFixture, List("ownership"))
+    val capacityFixture = releaseFixture(capacityResult = throw pending)
+    assertRejected(capacityFixture.processor.release(request, player), ReleaseFailureReason.Busy,
+      capacityFixture, List("ownership", "capacity"))
+    val entitlementFixture = releaseFixture(entitlementResult = throw pending)
+    assertRejected(entitlementFixture.processor.release(request, player), ReleaseFailureReason.Busy,
+      entitlementFixture, List("ownership", "capacity", "position", "entitlement"))
+    val recall = recallFixture(repositoryResult = Failure(pending))
+    assertRecallRejected(recall.processor.recall(recallRequest, player), RecallFailureReason.Busy,
+      recall, List("ownership"))
+
+  @Test
+  def pendingExceptionAfterLifecycleEntryIsNotReclassifiedAsUnacceptedBusy(): Unit =
+    val pending = actualPendingRead()
+    val release = releaseFixture(lifecycleResult = Failure(pending))
+    assertEquals(Some(ReleaseFailureReason.InfrastructureFailure), release.processor.release(request, player).result.reason)
+    val recall = recallFixture(recallResult = Failure(pending))
+    assertEquals(Some(RecallFailureReason.InfrastructureFailure), recall.processor.recall(recallRequest, player).result.reason)
+
+  private def actualPendingRead(): ManagedOrdinarySaveAdmission.MainReadPending =
+    val policy = new ManagedOrdinarySaveAdmission.OrdinaryProviderPolicy:
+      override def decide(provider: net.minecraft.world.gen.ChunkProviderServer, world: net.minecraft.world.WorldServer,
+          chunk: net.minecraft.world.chunk.Chunk, operation: ManagedOrdinarySaveAdmission.ProviderOperation): ManagedOrdinarySaveAdmission.ProviderDecision =
+        throw new AssertionError("pure admission test does not call a provider")
+      override def retainTemporary(bytes: Long, purpose: String): AutoCloseable =
+        throw new AssertionError("pure admission test does not allocate provider state")
+    val admission = new ManagedOrdinarySaveAdmission(Thread.currentThread(), 1, policy)
+    val mutation = admission.reserveMutation()
+    admission.submitted(mutation, true)
+    assertThrows(classOf[ManagedOrdinarySaveAdmission.MainReadPending], () => admission.requireMainReadAvailable())
+
+  @Test
+  def mainReadPoliciesObserveSuccessorAndPreserveReadFailure(): Unit =
+    val initial = state(version = 3L)
+    var currentState = initial
+    var count = 0
+    var failure: Throwable = null
+    val reads = new com.wi.floatingpod.server.MainPodReadAccess:
+      override private[floatingpod] def requireCurrentReads(): Unit =
+        if failure != null then throw failure
+      override def findState(id: UUID): Option[FloatingPodState] =
+        requireCurrentReads(); assertEquals(initial.uuid, id); Some(currentState)
+      override def findEntitlement(id: UUID): Option[PlayerEntitlement] =
+        requireCurrentReads(); Some(PlayerEntitlement(id))
+      override def activeCount: Int = { requireCurrentReads(); count }
+      override def activeCountFor(id: UUID): Int = { requireCurrentReads(); count }
+      override def activeLimit: Int = { requireCurrentReads(); 1 }
+    val ownership = OwnershipValidator.fromMainReads(reads)
+    val capacity = ActiveCapacityPolicy.fromMainReads(reads)
+    val entitlement = PersistedPlayerEntitlementPolicy.fromMainReads(reads)
+    assertEquals(com.wi.floatingpod.server.OwnershipAccepted(initial), ownership.validate(initial.uuid, playerId, 3L))
+    assertTrue(capacity.canRelease)
+    assertTrue(entitlement.mayRelease(player, initial))
+    currentState = state(version = 4L)
+    count = 256
+    assertEquals(com.wi.floatingpod.server.VersionMismatch(4L), ownership.validate(initial.uuid, playerId, 3L))
+    assertFalse(capacity.canRelease)
+    assertFalse(entitlement.mayRelease(player, initial))
+    val original = new IllegalStateException("original current Main read failure")
+    failure = original
+    assertSame(original, assertThrows(classOf[IllegalStateException], () => ownership.validate(initial.uuid, playerId, 4L)))
+    assertSame(original, assertThrows(classOf[IllegalStateException], () => capacity.canRelease))
+    assertSame(original, assertThrows(classOf[IllegalStateException], () => entitlement.mayRelease(player, currentState)))
+
   @Test
   def wrongDimensionRejectsBeforeRecallMutation(): Unit =
     val pod = state(active = true)

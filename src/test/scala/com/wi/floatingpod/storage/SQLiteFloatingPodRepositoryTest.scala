@@ -1,6 +1,6 @@
 package com.wi.floatingpod.storage
 
-import com.wi.floatingpod.domain.FloatingPodState
+import com.wi.floatingpod.domain.{FloatingPodState, PodOperatingMode}
 import com.wi.floatingpod.storage.sqlite.SQLiteFloatingPodRepository
 
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -91,7 +91,7 @@ class SQLiteFloatingPodRepositoryTest:
   /** 验证通用插入不会绕过活动生命周期入口。 */
   @Test
   def rejectsGenericActiveInsert(): Unit = withRepository { repository =>
-    val active = sampleState("00000000-0000-0000-0000-000000000018", active = true, dimensionId = Some(1))
+    val active = sampleState("00000000-0000-0000-0000-000000000018", owner = Some(UUID.fromString("11111111-1111-1111-1111-111111111118")), active = true, dimensionId = Some(1))
     assertTrue(failureOf(repository.insert(active)).isInstanceOf[IllegalArgumentException])
   }
 
@@ -107,6 +107,19 @@ class SQLiteFloatingPodRepositoryTest:
     assertEquals(Some(8), updated.dimensionId)
     assertEquals("nether", updated.worldName)
     assertEquals(Some(updated), repository.findByUuid(active.uuid).get)
+  }
+
+  @Test
+  def genericUpdateCannotChangeOperatingMode(): Unit = withRepository { repository =>
+    val owner = UUID.fromString("11111111-1111-1111-1111-111111111127")
+    val inactive = sampleState("00000000-0000-0000-0000-000000000027", owner = Some(owner))
+    repository.insert(inactive).get
+    val active = repository.activateIfAdmissible(inactive, owner, 0L, 7, 256).get.asInstanceOf[AdmissionOutcome.Accepted].state
+
+    val failure = failureOf(repository.update(active.copy(operatingMode = PodOperatingMode.WorldIdle)))
+
+    assertTrue(failure.isInstanceOf[IllegalArgumentException])
+    assertEquals(Some(active), repository.findByUuid(active.uuid).get)
   }
 
   /** 验证活动行不能经通用删除跳过 Recall。 */

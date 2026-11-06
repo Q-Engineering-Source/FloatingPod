@@ -1,14 +1,17 @@
 package com.wi.floatingpod.storage
 
-import com.wi.floatingpod.domain.FloatingPodState
+import com.wi.floatingpod.domain.{FloatingPodPose, FloatingPodState, PodOperatingMode}
 import com.wi.floatingpod.storage.AdmissionOutcome.Accepted as AdmissionAccepted
 import com.wi.floatingpod.storage.DeactivationOutcome.Accepted as DeactivationAccepted
+import com.wi.floatingpod.storage.OperatingModeChangeOutcome.{AlreadySet as ModeAlreadySet, Changed as ModeChanged, Rejected as ModeRejected}
+import com.wi.floatingpod.storage.OperatingModeChangeRejection
 import com.wi.floatingpod.storage.sqlite.SQLiteFloatingPodRepository
 
 import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertTrue}
 import org.junit.jupiter.api.Test
 
 import java.nio.file.Files
+import java.sql.DriverManager
 import java.util.UUID
 
 /** CREATE_PREPARED locator 的首个持久化 tracer。 */
@@ -175,6 +178,290 @@ class PhysicalRecoveryStoreTest:
 
       assertEquals(Some(PhysicalRecoveryLocator(podUuid, attemptUuid, PhysicalRecoveryLocatorState.RowActive, "row_active", Some(1L), Some(7), chunks.toList.sortBy(chunk => (chunk.dimensionId, chunk.chunkX, chunk.chunkZ)))), repository.findPhysicalRecoveryLocator(podUuid).get)
     finally repository.close()
+
+  @Test
+  def sameChunkTrackedDriftKeepsDomainAndLocatorVersionsSynchronizedAcrossReopen(): Unit =
+    val database = Files.createTempDirectory("floatingpod-active-drift").resolve("pods.db")
+    val podUuid = UUID.fromString("00000000-0000-0000-0000-000000000921")
+    val ownerUuid = UUID.fromString("00000000-0000-0000-0000-000000000922")
+    val attemptUuid = UUID.fromString("00000000-0000-0000-0000-000000000923")
+    val bindingUuid = UUID.fromString("00000000-0000-0000-0000-000000000924")
+    val inactive = FloatingPodState(podUuid, Some(ownerUuid), 0L, "overworld", 200D, 64D, -104D, 0F, 0F, false, 99L, None)
+    val chunks = (for chunkX <- 10 to 14; chunkZ <- -9 to -5 yield PhysicalRecoveryChunk(7, chunkX, chunkZ)).toSet
+    val drifted =
+      val repository = new SQLiteFloatingPodRepository(database.toString)
+      try
+        repository.createOrRetainLegacyUncertifiedBinding(bindingUuid, 1).get
+        repository.certifyPhysicalRecoveryBinding(bindingUuid, 1).get
+        repository.insert(inactive).get
+        repository.prepareCreateLocator(podUuid, 0L, attemptUuid, 7, chunks).get
+        val active = repository.activatePreparedIfAdmissible(inactive, ownerUuid, 0L, 7, 256, attemptUuid).get match
+          case AdmissionAccepted(state) => state
+          case other => throw new AssertionError(s"Expected activation, got $other")
+
+        val persistedDrift = repository.updateTrackedActiveDrift(active.copy(posX = 203D, posY = 65D, posZ = -107D, yaw = 45F, pitch = 12F), attemptUuid).get
+        assertEquals(2L, persistedDrift.stateVersion)
+        assertEquals(Some(2L), repository.findPhysicalRecoveryLocator(podUuid).get.flatMap(_.domainVersion))
+        assertEquals(PhysicalRecoveryLocatorState.RowActive, repository.findPhysicalRecoveryLocator(podUuid).get.get.state)
+        assertEquals(chunks.toList.sortBy(chunk => (chunk.dimensionId, chunk.chunkX, chunk.chunkZ)), repository.findPhysicalRecoveryLocator(podUuid).get.get.chunks)
+        persistedDrift
+      finally repository.close()
+
+    val reopened = new SQLiteFloatingPodRepository(database.toString)
+    try
+      assertEquals(Some(drifted), reopened.findByUuid(podUuid).get)
+      assertEquals(Some(2L), reopened.findPhysicalRecoveryLocator(podUuid).get.flatMap(_.domainVersion))
+      (reopened: PhysicalRecoveryStore).deactivateTrackedIfExpectedActive(podUuid, Some(ownerUuid), drifted.stateVersion, attemptUuid).get match
+        case DeactivationAccepted(deactivated) =>
+          assertEquals(3L, deactivated.stateVersion)
+          assertEquals(PhysicalRecoveryLocatorState.RowInactivePending, reopened.findPhysicalRecoveryLocator(podUuid).get.get.state)
+          assertEquals(Some(3L), reopened.findPhysicalRecoveryLocator(podUuid).get.flatMap(_.domainVersion))
+        case other => throw new AssertionError(s"Expected deactivation after drift, got $other")
+    finally reopened.close()
+
+  @Test
+  def rejectsWrongAttemptStaleVersionOwnerChangeAndCrossChunkDriftWithoutMutation(): Unit =
+    val database = Files.createTempDirectory("floatingpod-active-drift-rejections").resolve("pods.db")
+    val podUuid = UUID.fromString("00000000-0000-0000-0000-000000000931")
+    val ownerUuid = UUID.fromString("00000000-0000-0000-0000-000000000932")
+    val attemptUuid = UUID.fromString("00000000-0000-0000-0000-000000000933")
+    val bindingUuid = UUID.fromString("00000000-0000-0000-0000-000000000934")
+    val inactive = FloatingPodState(podUuid, Some(ownerUuid), 0L, "overworld", 200D, 64D, -104D, 0F, 0F, false, 99L, None)
+    val chunks = (for chunkX <- 10 to 14; chunkZ <- -9 to -5 yield PhysicalRecoveryChunk(7, chunkX, chunkZ)).toSet
+    val wrongAttemptUuid = UUID.fromString("00000000-0000-0000-0000-000000000935")
+    val otherOwnerUuid = UUID.fromString("00000000-0000-0000-0000-000000000936")
+    val repository = new SQLiteFloatingPodRepository(database.toString)
+    try
+      repository.createOrRetainLegacyUncertifiedBinding(bindingUuid, 1).get
+      repository.certifyPhysicalRecoveryBinding(bindingUuid, 1).get
+      repository.insert(inactive).get
+      repository.prepareCreateLocator(podUuid, 0L, attemptUuid, 7, chunks).get
+      val active = repository.activatePreparedIfAdmissible(inactive, ownerUuid, 0L, 7, 256, attemptUuid).get match
+        case AdmissionAccepted(state) => state
+        case other => throw new AssertionError(s"Expected activation, got $other")
+      val originalState = repository.findByUuid(podUuid).get.get
+      val originalLocator = repository.findPhysicalRecoveryLocator(podUuid).get.get
+
+      val wrongAttempt = repository.updateTrackedActiveDrift(active.copy(yaw = 15F), wrongAttemptUuid)
+      assertTrue(wrongAttempt.isFailure)
+      assertEquals(Some(originalState), repository.findByUuid(podUuid).get)
+      assertEquals(Some(originalLocator), repository.findPhysicalRecoveryLocator(podUuid).get)
+
+      val staleVersion = repository.updateTrackedActiveDrift(active.copy(stateVersion = active.stateVersion - 1L, yaw = 15F), attemptUuid)
+      assertTrue(staleVersion.isFailure)
+      assertEquals(Some(originalState), repository.findByUuid(podUuid).get)
+      assertEquals(Some(originalLocator), repository.findPhysicalRecoveryLocator(podUuid).get)
+
+      val ownerChange = repository.updateTrackedActiveDrift(active.copy(ownerUuid = Some(otherOwnerUuid), yaw = 15F), attemptUuid)
+      assertTrue(ownerChange.isFailure)
+      assertEquals(Some(originalState), repository.findByUuid(podUuid).get)
+      assertEquals(Some(originalLocator), repository.findPhysicalRecoveryLocator(podUuid).get)
+
+      val crossChunk = repository.updateTrackedActiveDrift(active.copy(posX = 216D, yaw = 15F), attemptUuid)
+      assertTrue(crossChunk.isFailure)
+      assertEquals(Some(originalState), repository.findByUuid(podUuid).get)
+      assertEquals(Some(originalLocator), repository.findPhysicalRecoveryLocator(podUuid).get)
+    finally repository.close()
+
+  @Test
+  def rollsBackDomainDriftWhenLocatorVersionUpdateFails(): Unit =
+    val database = Files.createTempDirectory("floatingpod-active-drift-rollback").resolve("pods.db")
+    val podUuid = UUID.fromString("00000000-0000-0000-0000-000000000941")
+    val ownerUuid = UUID.fromString("00000000-0000-0000-0000-000000000942")
+    val attemptUuid = UUID.fromString("00000000-0000-0000-0000-000000000943")
+    val bindingUuid = UUID.fromString("00000000-0000-0000-0000-000000000944")
+    val inactive = FloatingPodState(podUuid, Some(ownerUuid), 0L, "overworld", 200D, 64D, -104D, 0F, 0F, false, 99L, None)
+    val chunks = (for chunkX <- 10 to 14; chunkZ <- -9 to -5 yield PhysicalRecoveryChunk(7, chunkX, chunkZ)).toSet
+    val initialized = new SQLiteFloatingPodRepository(database.toString)
+    val active =
+      try
+        initialized.createOrRetainLegacyUncertifiedBinding(bindingUuid, 1).get
+        initialized.certifyPhysicalRecoveryBinding(bindingUuid, 1).get
+        initialized.insert(inactive).get
+        initialized.prepareCreateLocator(podUuid, 0L, attemptUuid, 7, chunks).get
+        initialized.activatePreparedIfAdmissible(inactive, ownerUuid, 0L, 7, 256, attemptUuid).get match
+          case AdmissionAccepted(state) => state
+          case other => throw new AssertionError(s"Expected activation, got $other")
+      finally initialized.close()
+
+    val rawConnection = DriverManager.getConnection(s"jdbc:sqlite:${database.toAbsolutePath}")
+    try
+      val statement = rawConnection.createStatement()
+      try
+        statement.execute(
+          "CREATE TRIGGER reject_tracked_active_locator_update " +
+            "BEFORE UPDATE OF domain_version ON physical_recovery_locator " +
+            "WHEN OLD.locator_state = 'ROW_ACTIVE' BEGIN " +
+            "SELECT RAISE(ABORT, 'forced locator update rejection'); END"
+        )
+      finally statement.close()
+    finally rawConnection.close()
+
+    val repository = new SQLiteFloatingPodRepository(database.toString)
+    try
+      val beforeLocator = repository.findPhysicalRecoveryLocator(podUuid).get.get
+      val update = repository.updateTrackedActiveDrift(active.copy(yaw = 45F), attemptUuid)
+
+      assertTrue(update.isFailure)
+      assertTrue(Option(update.failed.get.getMessage).exists(_.contains("forced locator update rejection")))
+      assertEquals(Some(active), repository.findByUuid(podUuid).get)
+      assertEquals(Some(beforeLocator), repository.findPhysicalRecoveryLocator(podUuid).get)
+      assertEquals(Some(active.stateVersion), beforeLocator.domainVersion)
+    finally repository.close()
+
+  @Test
+  def changesOwnedModeWithPoseAndLocatorCasAndKeepsWorldIdleInsideTheOwnerSlot(): Unit =
+    val database = Files.createTempDirectory("floatingpod-mode-cas").resolve("pods.db")
+    val podUuid = UUID.fromString("00000000-0000-0000-0000-000000000951")
+    val secondPodUuid = UUID.fromString("00000000-0000-0000-0000-000000000952")
+    val ownerUuid = UUID.fromString("00000000-0000-0000-0000-000000000953")
+    val attemptUuid = UUID.fromString("00000000-0000-0000-0000-000000000954")
+    val secondAttemptUuid = UUID.fromString("00000000-0000-0000-0000-000000000955")
+    val bindingUuid = UUID.fromString("00000000-0000-0000-0000-000000000956")
+    val inactive = FloatingPodState(podUuid, Some(ownerUuid), 0L, "overworld", 200D, 64D, -104D, 0F, 0F, false, 99L, None)
+    val secondInactive = inactive.copy(uuid = secondPodUuid)
+    val chunks = (for chunkX <- 10 to 14; chunkZ <- -9 to -5 yield PhysicalRecoveryChunk(7, chunkX, chunkZ)).toSet
+    val pose = FloatingPodPose("overworld", 203D, 65D, -107D, 45F, 12F, 7)
+    var repository = new SQLiteFloatingPodRepository(database.toString)
+    try
+      repository.createOrRetainLegacyUncertifiedBinding(bindingUuid, 1).get
+      val binding = repository.certifyPhysicalRecoveryBinding(bindingUuid, 1).get
+      repository.insert(inactive).get
+      repository.insert(secondInactive).get
+      repository.prepareCreateLocator(podUuid, 0L, attemptUuid, 7, chunks).get
+      val active = repository.activatePreparedIfAdmissible(inactive, ownerUuid, 0L, 7, 256, attemptUuid).get match
+        case AdmissionAccepted(state) => state
+        case other => throw new AssertionError(s"Expected activation, got $other")
+
+      val changed = (repository: PhysicalRecoveryStore).setOperatingModeTrackedIfOwned(
+        binding, podUuid, ownerUuid, active.stateVersion, attemptUuid, PodOperatingMode.WorldIdle, pose
+      ).get match
+        case ModeChanged(state) => state
+        case other => throw new AssertionError(s"Expected mode change, got $other")
+      assertEquals(2L, changed.stateVersion)
+      assertEquals(PodOperatingMode.WorldIdle, changed.operatingMode)
+      assertEquals(pose.posX, changed.posX)
+      assertEquals(pose.posY, changed.posY)
+      assertEquals(pose.posZ, changed.posZ)
+      assertEquals(pose.yaw, changed.yaw)
+      assertEquals(pose.pitch, changed.pitch)
+      assertEquals(Some(2L), repository.findPhysicalRecoveryLocator(podUuid).get.flatMap(_.domainVersion))
+      assertEquals(PhysicalRecoveryLocatorState.RowActive, repository.findPhysicalRecoveryLocator(podUuid).get.get.state)
+
+      repository.close()
+      repository = new SQLiteFloatingPodRepository(database.toString)
+      assertEquals(Some(changed), repository.findByUuid(podUuid).get)
+      assertEquals(Some(2L), repository.findPhysicalRecoveryLocator(podUuid).get.flatMap(_.domainVersion))
+
+      (repository: PhysicalRecoveryStore).setOperatingModeTrackedIfOwned(
+        binding, podUuid, ownerUuid, active.stateVersion, attemptUuid, PodOperatingMode.WorldIdle, pose
+      ).get match
+        case ModeAlreadySet(state) => assertEquals(changed, state)
+        case other => throw new AssertionError(s"Expected idempotent mode result, got $other")
+
+      val staleCachedDrift = repository.updateTrackedActiveDrift(changed.copy(operatingMode = PodOperatingMode.Normal, yaw = 30F), attemptUuid)
+      assertTrue(staleCachedDrift.isFailure)
+      assertEquals(Some(changed), repository.findByUuid(podUuid).get)
+      assertEquals(Some(2L), repository.findPhysicalRecoveryLocator(podUuid).get.flatMap(_.domainVersion))
+
+      repository.prepareCreateLocator(secondPodUuid, 0L, secondAttemptUuid, 7, chunks).get
+      (repository: PhysicalRecoveryStore).activatePreparedIfAdmissible(secondInactive, ownerUuid, 0L, 7, 256, secondAttemptUuid).get match
+        case com.wi.floatingpod.storage.AdmissionOutcome.Rejected(com.wi.floatingpod.storage.AdmissionRejection.PlayerActiveLimitReached) => ()
+        case other => throw new AssertionError(s"WorldIdle must retain its owned active slot, got $other")
+      assertEquals(Some(changed), repository.findByUuid(podUuid).get)
+    finally repository.close()
+
+  @Test
+  def rejectsModeCasForWrongOwnerVersionAttemptBindingOrPhysicalMovementWithoutMutation(): Unit =
+    val database = Files.createTempDirectory("floatingpod-mode-rejections").resolve("pods.db")
+    val podUuid = UUID.fromString("00000000-0000-0000-0000-000000000961")
+    val ownerUuid = UUID.fromString("00000000-0000-0000-0000-000000000962")
+    val otherOwner = UUID.fromString("00000000-0000-0000-0000-000000000963")
+    val attemptUuid = UUID.fromString("00000000-0000-0000-0000-000000000964")
+    val wrongAttempt = UUID.fromString("00000000-0000-0000-0000-000000000965")
+    val bindingUuid = UUID.fromString("00000000-0000-0000-0000-000000000966")
+    val inactive = FloatingPodState(podUuid, Some(ownerUuid), 0L, "overworld", 200D, 64D, -104D, 0F, 0F, false, 99L, None)
+    val chunks = (for chunkX <- 10 to 14; chunkZ <- -9 to -5 yield PhysicalRecoveryChunk(7, chunkX, chunkZ)).toSet
+    val pose = FloatingPodPose("overworld", 200D, 64D, -104D, 0F, 0F, 7)
+    val repository = new SQLiteFloatingPodRepository(database.toString)
+    try
+      repository.createOrRetainLegacyUncertifiedBinding(bindingUuid, 1).get
+      val binding = repository.certifyPhysicalRecoveryBinding(bindingUuid, 1).get
+      repository.insert(inactive).get
+      repository.prepareCreateLocator(podUuid, 0L, attemptUuid, 7, chunks).get
+      val active = repository.activatePreparedIfAdmissible(inactive, ownerUuid, 0L, 7, 256, attemptUuid).get match
+        case AdmissionAccepted(state) => state
+        case other => throw new AssertionError(s"Expected activation, got $other")
+      val originalState = repository.findByUuid(podUuid).get.get
+      val originalLocator = repository.findPhysicalRecoveryLocator(podUuid).get.get
+      val store: PhysicalRecoveryStore = repository
+
+      assertEquals(ModeRejected(OperatingModeChangeRejection.NotOwner), store.setOperatingModeTrackedIfOwned(binding, podUuid, otherOwner, active.stateVersion, attemptUuid, PodOperatingMode.WorldIdle, pose).get)
+      assertEquals(ModeRejected(OperatingModeChangeRejection.VersionMismatch(active.stateVersion)), store.setOperatingModeTrackedIfOwned(binding, podUuid, ownerUuid, active.stateVersion - 1L, attemptUuid, PodOperatingMode.WorldIdle, pose).get)
+      assertEquals(ModeRejected(OperatingModeChangeRejection.RecoveryObligationMismatch), store.setOperatingModeTrackedIfOwned(binding, podUuid, ownerUuid, active.stateVersion, wrongAttempt, PodOperatingMode.WorldIdle, pose).get)
+      assertEquals(ModeRejected(OperatingModeChangeRejection.BindingMismatch), store.setOperatingModeTrackedIfOwned(binding.copy(formatVersion = 2), podUuid, ownerUuid, active.stateVersion, attemptUuid, PodOperatingMode.WorldIdle, pose).get)
+      assertEquals(ModeRejected(OperatingModeChangeRejection.CrossChunkMovement), store.setOperatingModeTrackedIfOwned(binding, podUuid, ownerUuid, active.stateVersion, attemptUuid, PodOperatingMode.WorldIdle, pose.copy(posX = 216D)).get)
+      assertEquals(originalState, repository.findByUuid(podUuid).get.get)
+      assertEquals(originalLocator, repository.findPhysicalRecoveryLocator(podUuid).get.get)
+
+      assertEquals(
+        ModeRejected(OperatingModeChangeRejection.UnknownPod),
+        store.setOperatingModeTrackedIfOwned(binding, UUID.fromString("00000000-0000-0000-0000-000000000967"), ownerUuid, 0L, attemptUuid, PodOperatingMode.WorldIdle, pose).get
+      )
+
+      (repository: PhysicalRecoveryStore).deactivateTrackedIfExpectedActive(podUuid, Some(ownerUuid), active.stateVersion, attemptUuid).get match
+        case DeactivationAccepted(_) => ()
+        case other => throw new AssertionError(s"Expected deactivation before testing inactive mode change, got $other")
+      assertEquals(
+        ModeRejected(OperatingModeChangeRejection.Inactive),
+        store.setOperatingModeTrackedIfOwned(binding, podUuid, ownerUuid, active.stateVersion + 1L, attemptUuid, PodOperatingMode.WorldIdle, pose).get
+      )
+    finally repository.close()
+
+  @Test
+  def rollsBackModeWhenLocatorVersionUpdateFails(): Unit =
+    val database = Files.createTempDirectory("floatingpod-mode-rollback").resolve("pods.db")
+    val podUuid = UUID.fromString("00000000-0000-0000-0000-000000000971")
+    val ownerUuid = UUID.fromString("00000000-0000-0000-0000-000000000972")
+    val attemptUuid = UUID.fromString("00000000-0000-0000-0000-000000000973")
+    val bindingUuid = UUID.fromString("00000000-0000-0000-0000-000000000974")
+    val inactive = FloatingPodState(podUuid, Some(ownerUuid), 0L, "overworld", 200D, 64D, -104D, 0F, 0F, false, 99L, None)
+    val chunks = (for chunkX <- 10 to 14; chunkZ <- -9 to -5 yield PhysicalRecoveryChunk(7, chunkX, chunkZ)).toSet
+    val repository = new SQLiteFloatingPodRepository(database.toString)
+    val active =
+      try
+        repository.createOrRetainLegacyUncertifiedBinding(bindingUuid, 1).get
+        val binding = repository.certifyPhysicalRecoveryBinding(bindingUuid, 1).get
+        repository.insert(inactive).get
+        repository.prepareCreateLocator(podUuid, 0L, attemptUuid, 7, chunks).get
+        val value = repository.activatePreparedIfAdmissible(inactive, ownerUuid, 0L, 7, 256, attemptUuid).get.asInstanceOf[AdmissionAccepted].state
+        (binding, value)
+      catch
+        case failure: Throwable =>
+          repository.close()
+          throw failure
+    val (binding, activated) = active
+    repository.close()
+
+    val rawConnection = DriverManager.getConnection(s"jdbc:sqlite:${database.toAbsolutePath}")
+    try
+      val statement = rawConnection.createStatement()
+      try statement.execute("CREATE TRIGGER reject_mode_locator_update BEFORE UPDATE OF domain_version ON physical_recovery_locator WHEN OLD.locator_state = 'ROW_ACTIVE' BEGIN SELECT RAISE(ABORT, 'forced mode locator update rejection'); END")
+      finally statement.close()
+    finally rawConnection.close()
+
+    val reopened = new SQLiteFloatingPodRepository(database.toString)
+    try
+      val beforeLocator = reopened.findPhysicalRecoveryLocator(podUuid).get.get
+      val result = (reopened: PhysicalRecoveryStore).setOperatingModeTrackedIfOwned(
+        binding, podUuid, ownerUuid, activated.stateVersion, attemptUuid, PodOperatingMode.WorldIdle,
+        FloatingPodPose("overworld", 203D, 65D, -107D, 45F, 12F, 7)
+      )
+      assertTrue(result.isFailure)
+      assertTrue(Option(result.failed.get.getMessage).exists(_.contains("forced mode locator update rejection")))
+      assertEquals(Some(activated), reopened.findByUuid(podUuid).get)
+      assertEquals(Some(beforeLocator), reopened.findPhysicalRecoveryLocator(podUuid).get)
+    finally reopened.close()
 
   @Test
   def createsAndRetainsLegacyUncertifiedSingletonBindingWithoutCreatingDomainRowsOrLocators(): Unit =

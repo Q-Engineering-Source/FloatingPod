@@ -1,0 +1,16 @@
+item.floatingpod.pod_debug_tool.name=FloatingPod 除錯工具
+floatingpod.debug_tool.inspect=右鍵輔助機查看狀態。
+floatingpod.debug_tool.toggle=潛行右鍵自己的輔助機，切換世界閒置模式。
+floatingpod.debug_tool.place=管理員可右鍵方塊，建立待認領輔助機。
+floatingpod.debug_tool.pending=請求處理中；尚未確認提交。
+floatingpod.debug_tool.rejected=調試操作遭拒絕。
+floatingpod.debug_tool.unavailable=FloatingPod 調試執行環境尚不可用。
+floatingpod.debug_tool.faulted=調試操作失敗，請查看伺服器診斷。
+floatingpod.debug_tool.state=Pod：%s | 擁有者：%s | 模式：%s | 活動：%s | 初始化/恢復：%s | 原因碼：%s
+floatingpod.debug_tool.unclaimed=待認領
+floatingpod.recall.waiting=正在傳送收回請求，等待伺服器接納。
+floatingpod.recall.processing=收回處理中，請勿重複提交。
+floatingpod.recall.committed=已確認收回。
+floatingpod.recall.refused=收回請求未獲接納，請檢查目標狀態。
+floatingpod.recall.retained_failure=收回結果仍待確認，請勿重複提交。
+floatingpod.recall.buffered=請稍候：結果回覆後兩秒內不能重複點擊。

@@ -1,0 +1,26 @@
+# 普通配置入口：将本文件复制到服务端实例的 config/floatingpod/database.properties 后填写。
+# 这是示例，不会被自动读取。路径使用正斜线；相对路径以服务端实例目录为基准。
+# Database 必须由管理员预先创建；Mod 只在该库内首次建表，不执行 CREATE DATABASE。
+# 使用独立的空库，名称使用小写字母开头的小写字母、数字和下划线，最长 64 字符。
+DBHost=127.0.0.1
+Port=33317
+Database=replace_with_existing_database
+Username=replace_with_installer_user
+PasswordFile=config/floatingpod/secrets/installer.password
+
+# 当前发布要求 PKCS12 truststore 与 VERIFY_IDENTITY；填写受控文件路径，不填写密码内容。
+TrustStore=config/floatingpod/secrets/db-truststore.p12
+TrustStorePasswordFile=config/floatingpod/secrets/db-truststore.password
+ConnectTimeoutMillis=10000
+SocketTimeoutMillis=30000
+InitializationTimeoutMillis=180000
+LockTimeoutMillis=5000
+# 可留空。仅支持受控的连接超时与 TLS 参数，不接受任意 JDBC URL 参数。
+URLParams=
+
+# 首次初始化会创建完整 27 张表及配套 guards、审计过程和六个独立账号。
+# 五个辅助账号保持锁定；业务账号使用本机受控目录中生成并保存的密码。
+# Installer 必须有实际建表、建过程、建账号及授予所需权限的能力。
+# 审计账号的必要授权包括 mysql.* SELECT 和全局 SHOW_ROUTINE，管理员须知悉此范围。
+# 已完成的安装重启只使用生成的业务凭据验证身份和版本，不重新使用 installer 登录。
+# 不迁移或删除旧 SQLite、世界或其他数据库；不要删除受控安装身份、日志或凭据文件。

@@ -1,5 +1,7 @@
 package com.wi.floatingpod;
 
+import com.wi.floatingpod.debug.FloatingPodCommand;
+
 import com.wi.floatingpod.probe.ProbeInput;
 import com.wi.floatingpod.probe.ScalaInteropProbe;
 import com.wi.floatingpod.network.ForgeServerRuntimeFactory;
@@ -26,7 +28,7 @@ import java.util.Map;
         modid = FloatingPod.MOD_ID,
         name = FloatingPod.MOD_NAME,
         version = FloatingPod.VERSION,
-        dependencies = FloatingPod.SCALAR_DEPENDENCY
+        dependencies = FloatingPod.DEPENDENCIES
 )
 public final class FloatingPod {
 
@@ -34,13 +36,18 @@ public final class FloatingPod {
     public static final String MOD_ID = "floatingpod";
 
     /** Mod 的用户可见名称，与资源元数据保持一致。 */
-    public static final String MOD_NAME = "[FP]浮游辅助单元-FloatingPod";
+    public static final String MOD_NAME = "FloatingPod";
 
     /** 当前探针构建的版本标识。 */
     public static final String VERSION = "0.1.0-SNAPSHOT";
 
     /** FML 支持的 Scalar 运行时下限表达式，使用 Scalar mcmod.info 中的版本 3.8.4。 */
     public static final String SCALAR_DEPENDENCY = "required-after:scalar@[3.8.4,)";
+
+    /** 当前服务器已核验的 JDBC 前置；升级须重新核对驱动产物与数据库行为。 */
+    public static final String SQL_JDBC_DEPENDENCY = "required-after:sqljdbcdriverlib@[0.2.0-rc.4]";
+
+    public static final String DEPENDENCIES = SCALAR_DEPENDENCY + ";" + SQL_JDBC_DEPENDENCY;
 
     /**
      * 按物理端装配的初始化入口。客户端注入渲染装配实现，服务端注入不含渲染引用的实现，
@@ -90,7 +97,6 @@ public final class FloatingPod {
         String observation = verifyInterop(new ProbeInput(MOD_ID, 1));
         LOGGER.info("FloatingPod Stage 1-B Scala 3/Java 25 互操作探针通过: {}", observation);
 
-        serverRuntimeLifecycle.configure(event.getSuggestedConfigurationFile());
         PacketHandler.initialize();
         sidedSetup.onPreInitialization();
     }
@@ -112,6 +118,7 @@ public final class FloatingPod {
      */
     @Mod.EventHandler
     public void onServerStarting(FMLServerStartingEvent event) {
+        event.registerServerCommand(new FloatingPodCommand());
         serverRuntimeLifecycle.onServerStarting(event);
     }
 

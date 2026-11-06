@@ -11,6 +11,12 @@ import net.minecraftforge.fml.common.network.simpleimpl.{ControlledMessageContex
 
 import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertSame, assertThrows, assertTrue}
 import org.junit.jupiter.api.Test
+import org.apache.logging.log4j.{Level, LogManager}
+import org.apache.logging.log4j.core.{LogEvent, LoggerContext}
+import org.apache.logging.log4j.core.appender.AbstractAppender
+import org.apache.logging.log4j.core.config.Property
+import org.apache.logging.log4j.core.layout.PatternLayout
+import io.netty.buffer.Unpooled
 
 import java.util.UUID
 import scala.collection.mutable
@@ -104,6 +110,163 @@ class ServerPacketAdaptersTest:
       new ControlledMessageContext()
     ))
     assertEquals(1, sender.attempts)
+
+  @Test
+  def sameReleaseEndpointProcessesNextLegalRequestAfterNonFatalDependencyFailure(): Unit =
+    withActualRequestLog { (log, events) =>
+      val cause = new IllegalStateException("private release dependency detail")
+      val originalStack = cause.getStackTrace
+      val authoritative = state(active = true, version = 17L, x = 12.25D)
+        .copy(posY = 70.5D, posZ = -3.75D, yaw = 35F, pitch = -10F)
+      val player = new TestPlayerContext(playerId, new TestWorld(18))
+      val sender = new RecordingSender()
+      var capacityCalls = 0
+      val capacity = new ReleaseCapacityPolicy:
+        override def canRelease: Boolean =
+          capacityCalls += 1
+          if capacityCalls == 1 then throw cause
+          true
+      var mutations = 0
+      val lifecycle = new PodLifecyclePort:
+        override def isSameDimension(state: FloatingPodState, player: ServerPlayerContext): Try[Boolean] = Success(true)
+        override def releaseOutcome(state: FloatingPodState, target: ReleasePosition,
+            player: ServerPlayerContext): Try[ReleaseLifecycleOutcome] =
+          mutations += 1
+          Success(ReleaseLifecycleOutcome.Accepted(PodLifecycleSnapshot(authoritative)))
+        override def recallOutcome(state: FloatingPodState, player: ServerPlayerContext): Try[RecallLifecycleOutcome] =
+          throw new AssertionError("release request must not invoke recall")
+      val processor = new PodRequestProcessor(new OwnershipValidator(new RequestRepository(Some(state(active = false)))),
+        capacity, new PositionValidator(), AllowAllPlayerEntitlementPolicy, lifecycle, log)
+      val endpoint = new ForgeServerPacketEndpoint(new CapturingFactory(player), processor, sender)
+      endpoint.receiveRelease(new C2SReleaseRequest(podId, new BlockPos(2, 64, 0), 3L), new ControlledMessageContext())
+      assertEquals(0, mutations)
+      assertEquals(1, sender.messages.size, "failed request must send no partial sync")
+      val failed = sender.messages.head.asInstanceOf[S2CReleaseResult]
+      val encoded = Unpooled.buffer()
+      try
+        failed.toBytes(encoded)
+        // Release: version + success + UUID + absent state version + present reason + reason ID.
+        assertEquals(1 + 1 + 16 + 1 + 1 + 1, encoded.readableBytes())
+        val decoded = new S2CReleaseResult()
+        decoded.fromBytes(encoded)
+        assertFalse(encoded.isReadable)
+        assertFalse(decoded.success)
+        assertEquals(podId, decoded.podUuid)
+        assertEquals(None, decoded.newStateVersion)
+        assertEquals(Some(ReleaseFailureReason.InfrastructureFailure), decoded.reason)
+      finally encoded.release()
+      assertOriginalRequestFailure(events.toVector, "release", cause, originalStack)
+
+      endpoint.receiveRelease(new C2SReleaseRequest(podId, new BlockPos(3, 64, 1), 3L), new ControlledMessageContext())
+      assertEquals(2, capacityCalls)
+      assertEquals(1, mutations)
+      assertEquals(3, sender.messages.size)
+      val succeeded = sender.messages(1).asInstanceOf[S2CReleaseResult]
+      assertTrue(succeeded.success)
+      assertEquals(podId, succeeded.podUuid)
+      assertEquals(Some(authoritative.stateVersion), succeeded.newStateVersion)
+      assertEquals(None, succeeded.reason)
+      assertExactSync(sender.messages(2), authoritative)
+      assertOriginalRequestFailure(events.toVector, "release", cause, originalStack)
+      assertEquals(Vector(Level.ERROR, Level.DEBUG), events.map(_.getLevel).toVector)
+    }
+
+  @Test
+  def sameRecallEndpointProcessesNextLegalRequestAfterNonFatalDependencyFailure(): Unit =
+    withActualRequestLog { (log, events) =>
+      val cause = new IllegalStateException("private recall dependency detail")
+      val originalStack = cause.getStackTrace
+      val authoritative = state(active = false, version = 18L, x = -8.25D)
+        .copy(posY = 72.5D, posZ = 6.75D, yaw = -40F, pitch = 15F)
+      val player = new TestPlayerContext(playerId, new TestWorld(19))
+      val sender = new RecordingSender()
+      var dimensionCalls = 0
+      var mutations = 0
+      val lifecycle = new PodLifecyclePort:
+        override def isSameDimension(state: FloatingPodState, player: ServerPlayerContext): Try[Boolean] =
+          dimensionCalls += 1
+          if dimensionCalls == 1 then Failure(cause) else Success(true)
+        override def releaseOutcome(state: FloatingPodState, target: ReleasePosition,
+            player: ServerPlayerContext): Try[ReleaseLifecycleOutcome] =
+          throw new AssertionError("recall request must not invoke release")
+        override def recallOutcome(state: FloatingPodState, player: ServerPlayerContext): Try[RecallLifecycleOutcome] =
+          mutations += 1
+          Success(RecallLifecycleOutcome.Accepted(PodLifecycleSnapshot(authoritative)))
+      val processor = new PodRequestProcessor(new OwnershipValidator(new RequestRepository(Some(state(active = true)))),
+        new FixedCapacity(true), new PositionValidator(), AllowAllPlayerEntitlementPolicy, lifecycle, log)
+      val endpoint = new ForgeServerPacketEndpoint(new CapturingFactory(player), processor, sender)
+      endpoint.receiveRecall(new C2SRecallRequest(podId, 3L), new ControlledMessageContext())
+      assertEquals(0, mutations)
+      assertEquals(1, sender.messages.size, "failed request must send no partial sync")
+      val failed = sender.messages.head.asInstanceOf[S2CRecallResult]
+      val encoded = Unpooled.buffer()
+      try
+        failed.toBytes(encoded)
+        // Recall independently uses the bounded optional-version/optional-reason result codec.
+        assertEquals(1 + 1 + 16 + 1 + 1 + 1, encoded.readableBytes())
+        val decoded = new S2CRecallResult()
+        decoded.fromBytes(encoded)
+        assertFalse(encoded.isReadable)
+        assertFalse(decoded.success)
+        assertEquals(podId, decoded.podUuid)
+        assertEquals(None, decoded.newStateVersion)
+        assertEquals(Some(RecallFailureReason.InfrastructureFailure), decoded.reason)
+      finally encoded.release()
+      assertOriginalRequestFailure(events.toVector, "recall", cause, originalStack)
+
+      endpoint.receiveRecall(new C2SRecallRequest(podId, 3L), new ControlledMessageContext())
+      assertEquals(2, dimensionCalls)
+      assertEquals(1, mutations)
+      assertEquals(3, sender.messages.size)
+      val succeeded = sender.messages(1).asInstanceOf[S2CRecallResult]
+      assertTrue(succeeded.success)
+      assertEquals(podId, succeeded.podUuid)
+      assertEquals(Some(authoritative.stateVersion), succeeded.newStateVersion)
+      assertEquals(None, succeeded.reason)
+      assertExactSync(sender.messages(2), authoritative)
+      assertOriginalRequestFailure(events.toVector, "recall", cause, originalStack)
+      assertEquals(Vector(Level.ERROR, Level.DEBUG), events.map(_.getLevel).toVector)
+    }
+
+  private def withActualRequestLog(body: (RequestLog, mutable.ArrayBuffer[LogEvent]) => Unit): Unit =
+    val events = mutable.ArrayBuffer.empty[LogEvent]
+    val context = LogManager.getContext(false).asInstanceOf[LoggerContext]
+    val logger = context.getLogger(classOf[Log4jRequestLog].getName)
+    val originalLevel = logger.getLevel
+    val originalAdditivity = logger.isAdditive
+    val appender = new AbstractAppender("request-isolation-" + UUID.randomUUID(), null,
+        PatternLayout.createDefaultLayout(), false, Property.EMPTY_ARRAY):
+      override def append(event: LogEvent): Unit = { events += event.toImmutable; () }
+    appender.start()
+    try
+      logger.addAppender(appender)
+      logger.setLevel(Level.ALL)
+      logger.setAdditive(false)
+      body(new Log4jRequestLog(logger), events)
+    finally
+      logger.removeAppender(appender)
+      logger.setLevel(originalLevel)
+      logger.setAdditive(originalAdditivity)
+      appender.stop()
+
+  private def assertOriginalRequestFailure(events: Vector[LogEvent], operation: String,
+      cause: Throwable, originalStack: Array[StackTraceElement]): Unit =
+    val errors = events.filter(_.getLevel == Level.ERROR)
+    assertEquals(1, errors.size)
+    assertEquals(s"FloatingPod $operation infrastructure failure from $playerId for $podId",
+      errors.head.getMessage.getFormattedMessage)
+    assertSame(cause, errors.head.getThrown)
+    assertTrue(originalStack.sameElements(errors.head.getThrown.getStackTrace))
+
+  private def assertExactSync(message: IMessage, authoritative: FloatingPodState): Unit =
+    val sync = message.asInstanceOf[S2CStateSync]
+    assertEquals(authoritative.uuid, sync.podUuid)
+    assertEquals(authoritative.stateVersion, sync.stateVersion)
+    assertEquals(authoritative.posX, sync.x)
+    assertEquals(authoritative.posY, sync.y)
+    assertEquals(authoritative.posZ, sync.z)
+    assertEquals(authoritative.yaw, sync.yaw)
+    assertEquals(authoritative.pitch, sync.pitch)
 
   @Test
   def lifecycleReleaseUsesPrimaryAuthenticatedSpawnAndItsExactCommittedStateWithoutReread(): Unit =

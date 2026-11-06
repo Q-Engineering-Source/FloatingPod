@@ -1,6 +1,6 @@
 package com.wi.floatingpod.server
 
-import com.wi.floatingpod.domain.FloatingPodState
+import com.wi.floatingpod.domain.{FloatingPodState, PodOperatingMode}
 import com.wi.floatingpod.crashpoint.CrashPointHarness
 import com.wi.floatingpod.storage.{ActivityTransitionStore, AdmissionOutcome, AdmissionRejection, DeactivationOutcome, DeactivationRejection, FloatingPodRepository, PhysicalRecoveryBinding, PhysicalRecoveryChunk, PhysicalRecoveryLocator, PhysicalRecoveryLocatorReason, PhysicalRecoveryLocatorState, PhysicalRecoveryStore}
 import net.minecraftforge.common.ForgeChunkManager
@@ -298,14 +298,35 @@ class ActiveFloatingPodManagerTest:
     assertEquals(0, fixture.gateway.releaseCalls)
 
   @Test
-  def cacheFlushUsesGenericUpdateAndReturnedVersion(): Unit =
+  def cacheFlushUsesTrackedActiveDriftAndReturnedVersion(): Unit =
     val fixture = Fixture(13)
     assertTrue(fixture.spawn().isSuccess)
     val cached = fixture.repository.states(fixture.uuid).copy(posX = 12D)
     assertTrue(fixture.manager.updateCachedState(fixture.uuid, cached).isSuccess)
     assertEquals(1, fixture.manager.flushCachedStates().get)
-    assertEquals(1, fixture.repository.genericUpdateCalls)
+    assertEquals(0, fixture.repository.genericUpdateCalls)
+    assertEquals(1, fixture.repository.trackedDriftCalls)
     assertEquals(0, fixture.manager.flushCachedStates().get)
+
+  @Test
+  def failedTrackedCacheFlushDoesNotAdvanceExactStateOrRecallPhysicalPod(): Unit =
+    val fixture = Fixture(131)
+    assertTrue(fixture.spawn().isSuccess)
+    val active = fixture.repository.states(fixture.uuid)
+    fixture.repository.trackedDriftResult = Some(Failure(new IllegalStateException("locator update rejected")))
+    assertTrue(fixture.manager.updateCachedState(fixture.uuid, active.copy(yaw = 15F)).isSuccess)
+
+    val flush = fixture.manager.flushCachedStates()
+    val recall = fixture.manager.recallIfExpected(fixture.uuid, Some(fixture.owner), active.stateVersion + 1L)
+
+    assertTrue(flush.isFailure)
+    assertEquals("locator update rejected", flush.failed.get.getMessage)
+    assertEquals(Success(RecallOutcome.Rejected(DeactivationRejection.VersionMismatch(active.stateVersion))), recall)
+    assertEquals(1, fixture.repository.trackedDriftCalls)
+    assertEquals(0, fixture.repository.genericUpdateCalls)
+    assertEquals(0, fixture.repository.trackedDeactivationCalls)
+    assertEquals(0, fixture.world.removeCalls)
+    assertEquals(0, fixture.gateway.releaseCalls)
 
   @Test
   def cacheRejectsCriticalIdentityDrift(): Unit =
@@ -315,6 +336,19 @@ class ActiveFloatingPodManagerTest:
     assertTrue(fixture.manager.updateCachedState(fixture.uuid, baseline.copy(dimensionId = Some(99))).isFailure)
     assertTrue(fixture.manager.updateCachedState(fixture.uuid, baseline.copy(isActive = false)).isFailure)
     assertEquals(0, fixture.manager.flushCachedStates().get)
+
+  @Test
+  def cacheCannotChangeOperatingModeWithoutTheCriticalTransition(): Unit =
+    val fixture = Fixture(141)
+    assertTrue(fixture.spawn().isSuccess)
+    val baseline = fixture.repository.states(fixture.uuid)
+    val changed = baseline.copy(operatingMode = PodOperatingMode.WorldIdle)
+
+    assertTrue(fixture.manager.updateCachedState(fixture.uuid, changed).isFailure)
+    assertEquals(0, fixture.manager.flushCachedStates().get)
+    assertEquals(baseline, fixture.repository.states(fixture.uuid))
+    assertEquals(0, fixture.repository.trackedDriftCalls)
+    assertEquals(0, fixture.repository.genericUpdateCalls)
 
   @Test
   def recoveryAttachesExistingCanonicalTicketAndEntityWithoutWrite(): Unit =
@@ -336,6 +370,115 @@ class ActiveFloatingPodManagerTest:
     assertEquals(1, fixture.world.spawnCalls)
     assertEquals(RecoveryDisposition.Replayed, fixture.manager.recoverCommittedActive(active, fixture.world).get)
     assertEquals(0, fixture.repository.genericUpdateCalls)
+
+  @Test
+  def abortOfAttachedRecoveryKeepsSourceBodyAndOnlyRemovesBootPublication(): Unit =
+    val fixture = Fixture(161, active = true)
+    val active = fixture.repository.states(fixture.uuid)
+    fixture.chunkManager.requestTicket(fixture.uuid, fixture.world, 0, 0).get
+    val sourceBody = fixture.world.seed(fixture.uuid)
+    val receipt = fixture.manager.beginStartupRecovery(active, fixture.world)
+
+    assertTrue(fixture.manager.recoverCommittedActiveForStartup(active, fixture.world, receipt).get.isInstanceOf[RecoveryDisposition.Attached])
+    fixture.manager.abortStartupRecovery(receipt).get
+
+    assertSame(sourceBody, fixture.world.findPod(fixture.uuid).get)
+    assertTrue(fixture.manager.getActivePod(fixture.uuid).isEmpty)
+    assertTrue(fixture.manager.updateCachedState(fixture.uuid, active).isFailure)
+    assertTrue(fixture.chunkManager.managedTicketRecords().contains(fixture.uuid))
+    assertEquals(active, fixture.repository.states(fixture.uuid))
+
+  @Test
+  def abortOfRecreatedRecoveryRemovesOnlyTheCapturedBootBody(): Unit =
+    val fixture = Fixture(162, active = true)
+    val active = fixture.repository.states(fixture.uuid)
+    fixture.chunkManager.requestTicket(fixture.uuid, fixture.world, 0, 0).get
+    val receipt = fixture.manager.beginStartupRecovery(active, fixture.world)
+
+    assertTrue(fixture.manager.recoverCommittedActiveForStartup(active, fixture.world, receipt).get.isInstanceOf[RecoveryDisposition.Recreated])
+    val bootBody = fixture.world.findPod(fixture.uuid).get
+    fixture.manager.abortStartupRecovery(receipt).get
+
+    assertTrue(fixture.world.findPod(fixture.uuid).isEmpty)
+    assertTrue(fixture.manager.getActivePod(fixture.uuid).isEmpty)
+    assertTrue(fixture.chunkManager.managedTicketRecords().contains(fixture.uuid))
+    assertEquals(active, fixture.repository.states(fixture.uuid))
+    assertTrue(bootBody.podUuid == fixture.uuid)
+
+  @Test
+  def staleBodyReplacementRejectsAbortWithoutDeletingOrUnpublishing(): Unit =
+    val fixture = Fixture(163, active = true)
+    val active = fixture.repository.states(fixture.uuid)
+    fixture.chunkManager.requestTicket(fixture.uuid, fixture.world, 0, 0).get
+    val receipt = fixture.manager.beginStartupRecovery(active, fixture.world)
+    fixture.manager.recoverCommittedActiveForStartup(active, fixture.world, receipt).get
+    val capturedBody = fixture.world.lastSpawnedBody.get
+    val replacement = fixture.world.installUuidIndexReplacementKeepingResident(capturedBody)
+
+    val failure = fixture.manager.abortStartupRecovery(receipt).failed.get
+
+    assertTrue(failure.getMessage.contains("stale"))
+    assertSame(replacement, fixture.world.findPod(fixture.uuid).get)
+    assertTrue(fixture.world.bodyIsResident(capturedBody))
+    assertTrue(fixture.world.bodyIsResident(replacement))
+    assertEquals(0, fixture.world.removeCalls)
+    assertTrue(fixture.manager.getActivePod(fixture.uuid).nonEmpty)
+    assertTrue(fixture.chunkManager.managedTicketRecords().contains(fixture.uuid))
+
+  @Test
+  def startupReceiptCannotBeReusedWithAStaleWorld(): Unit =
+    val fixture = Fixture(166, active = true)
+    val active = fixture.repository.states(fixture.uuid)
+    fixture.chunkManager.requestTicket(fixture.uuid, fixture.world, 0, 0).get
+    val receipt = fixture.manager.beginStartupRecovery(active, fixture.world)
+    val otherWorld = new TestWorld(fixture.events, fixture.world.dimensionId, 1660, new Object)
+
+    val failure = fixture.manager.recoverCommittedActiveForStartup(active, otherWorld, receipt).failed.get
+
+    assertTrue(failure.getMessage.contains("world does not match"))
+    fixture.manager.abortStartupRecovery(receipt).get
+    assertTrue(fixture.world.findPod(fixture.uuid).isEmpty)
+    assertTrue(fixture.manager.getActivePod(fixture.uuid).isEmpty)
+    assertTrue(fixture.chunkManager.managedTicketRecords().contains(fixture.uuid))
+
+  @Test
+  def staleManagerMappingRejectsReplayReceiptWithoutDeletingOrUnpublishing(): Unit =
+    val fixture = Fixture(165, active = true)
+    val active = fixture.repository.states(fixture.uuid)
+    fixture.chunkManager.requestTicket(fixture.uuid, fixture.world, 0, 0).get
+    fixture.manager.recoverCommittedActive(active, fixture.world).get
+    val sourceBody = fixture.world.findPod(fixture.uuid).get
+    val receipt = fixture.manager.beginStartupRecovery(active, fixture.world)
+    assertEquals(RecoveryDisposition.Replayed, fixture.manager.recoverCommittedActiveForStartup(active, fixture.world, receipt).get)
+    val drifted = active.copy(posX = active.posX + 1D)
+    assertTrue(fixture.manager.updateCachedState(fixture.uuid, drifted).isSuccess)
+    assertEquals(1, fixture.manager.flushCachedStates().get)
+    val committedDrift = fixture.repository.states(fixture.uuid)
+    assertEquals(drifted.copy(stateVersion = drifted.stateVersion + 1L, lastUpdated = drifted.lastUpdated + 1L), committedDrift)
+
+    val failure = fixture.manager.abortStartupRecovery(receipt).failed.get
+
+    assertTrue(failure.getMessage.contains("stale"))
+    assertSame(sourceBody, fixture.world.findPod(fixture.uuid).get)
+    assertSame(sourceBody, fixture.manager.getActivePod(fixture.uuid).get)
+    assertTrue(fixture.chunkManager.managedTicketRecords().contains(fixture.uuid))
+    assertEquals(committedDrift, fixture.repository.states(fixture.uuid))
+
+  @Test
+  def abortOfRepeatedReplayIsNonDestructive(): Unit =
+    val fixture = Fixture(164, active = true)
+    val active = fixture.repository.states(fixture.uuid)
+    fixture.chunkManager.requestTicket(fixture.uuid, fixture.world, 0, 0).get
+    fixture.manager.recoverCommittedActive(active, fixture.world).get
+    val sourceBody = fixture.world.findPod(fixture.uuid).get
+    val receipt = fixture.manager.beginStartupRecovery(active, fixture.world)
+
+    assertEquals(RecoveryDisposition.Replayed, fixture.manager.recoverCommittedActiveForStartup(active, fixture.world, receipt).get)
+    fixture.manager.abortStartupRecovery(receipt).get
+
+    assertSame(sourceBody, fixture.world.findPod(fixture.uuid).get)
+    assertSame(sourceBody, fixture.manager.getActivePod(fixture.uuid).get)
+    assertTrue(fixture.chunkManager.managedTicketRecords().contains(fixture.uuid))
 
   @Test
   def recoveryAcceptsFreshWrapperForTheSameCanonicalWorld(): Unit =
@@ -364,6 +507,124 @@ class ActiveFloatingPodManagerTest:
     assertTrue(fixture.manager.recoverCommittedActive(active, fixture.world).isFailure)
     assertTrue(fixture.world.findPod(wrongUuid).isEmpty)
     assertTrue(fixture.manager.getActivePod(fixture.uuid).isEmpty)
+
+  @Test
+  def failureAfterCapturedPartialSpawnRetainsPrimaryAndSuppressesRemovalFailure(): Unit =
+    val fixture = Fixture(181, active = true)
+    val active = fixture.repository.states(fixture.uuid)
+    fixture.chunkManager.requestTicket(fixture.uuid, fixture.world, 0, 0).get
+    val wrongUuid = uuidOf(9981)
+    fixture.world.nextUuid = wrongUuid
+    fixture.world.failRemoval = true
+
+    val primary = fixture.manager.recoverCommittedActive(active, fixture.world).failed.get
+
+    assertTrue(primary.getMessage.contains(s"World returned entity UUID $wrongUuid"))
+    assertEquals(1, primary.getSuppressed.length)
+    assertEquals("remove failed", primary.getSuppressed.head.getMessage)
+    assertTrue(fixture.world.findPod(wrongUuid).nonEmpty)
+    assertTrue(fixture.manager.getActivePod(fixture.uuid).isEmpty)
+    assertTrue(fixture.chunkManager.managedTicketRecords().contains(fixture.uuid))
+
+  @Test
+  def capturedResidentBodyIsRemovedAfterSpawnUuidIndexValidationFails(): Unit =
+    val fixture = Fixture(182, active = true)
+    val active = fixture.repository.states(fixture.uuid)
+    fixture.chunkManager.requestTicket(fixture.uuid, fixture.world, 0, 0).get
+    val unrelatedUuid = uuidOf(9182)
+    val unrelatedBody = fixture.world.seed(unrelatedUuid)
+    val indexFailure = new IllegalStateException(s"World ${fixture.world.diagnosticWorldName} did not index spawned FloatingPod ${fixture.uuid}")
+    fixture.world.dropUuidIndexAfterCapture = Some(fixture.uuid)
+    fixture.world.uuidIndexFailure = Some(indexFailure)
+
+    val failure = fixture.manager.recoverCommittedActive(active, fixture.world).failed.get
+    val capturedBody = fixture.world.lastSpawnedBody.get
+
+    assertSame(indexFailure, failure)
+    assertFalse(fixture.world.bodyIsResident(capturedBody))
+    assertTrue(fixture.world.uuidIndexFailureObservedExactResidentBody)
+    assertTrue(fixture.world.uuidIndexFailureObservedExactEntityIdIndex)
+    assertFalse(fixture.world.bodyIsIndexedByEntityId(capturedBody))
+    assertEquals(1, fixture.world.removeCalls)
+    assertSame(unrelatedBody, fixture.world.findPod(unrelatedUuid).get)
+    assertTrue(fixture.world.bodyIsResident(unrelatedBody))
+    assertTrue(fixture.world.findPod(fixture.uuid).isEmpty)
+    assertTrue(fixture.manager.getActivePod(fixture.uuid).isEmpty)
+    assertTrue(fixture.chunkManager.managedTicketRecords().contains(fixture.uuid))
+    assertEquals(0, fixture.gateway.releaseCalls)
+    assertEquals(active, fixture.repository.states(fixture.uuid))
+
+  @Test
+  def capturedBodyRemovalFailureIsSuppressedOnOriginalMissingUuidIndexFailure(): Unit =
+    val fixture = Fixture(183, active = true)
+    val active = fixture.repository.states(fixture.uuid)
+    fixture.chunkManager.requestTicket(fixture.uuid, fixture.world, 0, 0).get
+    val indexFailure = new IllegalStateException(s"World ${fixture.world.diagnosticWorldName} did not index spawned FloatingPod ${fixture.uuid}")
+    val removalFailure = new IllegalStateException("captured-body removal failed")
+    fixture.world.dropUuidIndexAfterCapture = Some(fixture.uuid)
+    fixture.world.uuidIndexFailure = Some(indexFailure)
+    fixture.world.failRemoval = true
+    fixture.world.removalFailure = Some(removalFailure)
+
+    val failure = fixture.manager.recoverCommittedActive(active, fixture.world).failed.get
+    val capturedBody = fixture.world.lastSpawnedBody.get
+
+    assertSame(indexFailure, failure)
+    assertTrue(failure.getSuppressed.exists(_ eq removalFailure))
+    assertTrue(fixture.world.bodyIsResident(capturedBody))
+    assertTrue(fixture.world.bodyIsIndexedByEntityId(capturedBody))
+    assertEquals(1, fixture.world.removeCalls)
+    assertTrue(fixture.world.findPod(fixture.uuid).isEmpty)
+    assertTrue(fixture.manager.getActivePod(fixture.uuid).isEmpty)
+    assertTrue(fixture.chunkManager.managedTicketRecords().contains(fixture.uuid))
+    assertEquals(0, fixture.gateway.releaseCalls)
+    assertEquals(active, fixture.repository.states(fixture.uuid))
+
+  @Test
+  def compatibilityRecoveryRetainsOriginalFailureWhenRemovalIsFatal(): Unit =
+    val original = new IllegalStateException("captured body indexing failed")
+    val cleanup = new LinkageError("captured body fatal removal")
+    assertCompatibilityRecoveryEscape(original, cleanup, cleanup)
+
+  @Test
+  def compatibilityRecoveryRetainsOriginalFailureWhenRemovalIsInterrupted(): Unit =
+    val original = new IllegalStateException("captured body indexing failed")
+    val cleanup = new InterruptedException("captured body interrupted removal")
+    assertCompatibilityRecoveryEscape(original, cleanup, cleanup)
+
+  @Test
+  def compatibilityRecoveryPreservesOriginalFatalWhenRemovalAlsoFails(): Unit =
+    val original = new LinkageError("captured body fatal indexing")
+    assertCompatibilityRecoveryEscape(original, new IllegalStateException("captured body removal failed"), original)
+
+  private def assertCompatibilityRecoveryEscape(original: Throwable, cleanup: Throwable, expectedEscape: Throwable): Unit =
+    val fixture = Fixture(184, active = true)
+    val active = fixture.repository.states(fixture.uuid)
+    fixture.chunkManager.requestTicket(fixture.uuid, fixture.world, 0, 0).get
+    fixture.world.dropUuidIndexAfterCapture = Some(fixture.uuid)
+    fixture.world.uuidIndexFailure = Some(original)
+    fixture.world.failRemoval = true
+    fixture.world.removalFailure = Some(cleanup)
+
+    var escaped = Option.empty[Throwable]
+    var returned = false
+    try
+      fixture.manager.recoverCommittedActive(active, fixture.world)
+      returned = true
+    catch case failure: Throwable => escaped = Some(failure)
+
+    assertFalse(returned, "fatal/interruption must escape the Try boundary")
+    assertSame(expectedEscape, escaped.orNull)
+    val secondary = if expectedEscape eq original then cleanup else original
+    assertTrue(expectedEscape.getSuppressed.exists(_ eq secondary))
+    val capturedBody = fixture.world.lastSpawnedBody.get
+    assertTrue(fixture.world.bodyIsResident(capturedBody))
+    assertTrue(fixture.world.bodyIsIndexedByEntityId(capturedBody))
+    assertEquals(1, fixture.world.removeCalls)
+    assertTrue(fixture.manager.getActivePod(fixture.uuid).isEmpty)
+    assertTrue(fixture.chunkManager.managedTicketRecords().contains(fixture.uuid))
+    assertEquals(0, fixture.gateway.releaseCalls)
+    assertEquals(active, fixture.repository.states(fixture.uuid))
 
   /** 关服报告必须保留单项失败，并继续收回其他可推进状态。 */
   @Test
@@ -396,25 +657,81 @@ class ActiveFloatingPodManagerTest:
 
   private final class TestEntity(override val podUuid: UUID, override val entityId: Int) extends ActivePodEntity
   private final class TestWorld(val events: mutable.ListBuffer[String], override val dimensionId: Int, var nextId: Int, val logicalWorldKey: AnyRef = new Object) extends PodWorld:
-    private val entities = mutable.HashMap.empty[UUID, TestEntity]
+    private val entitiesByUuid = mutable.HashMap.empty[UUID, TestEntity]
+    private val entitiesById = mutable.HashMap.empty[Int, TestEntity]
+    private val residentBodies = mutable.ArrayBuffer.empty[TestEntity]
     var nextUuid: UUID = null
+    var dropUuidIndexAfterCapture = Option.empty[UUID]
+    var uuidIndexFailure = Option.empty[Throwable]
+    var lastSpawnedBody = Option.empty[TestEntity]
+    var uuidIndexFailureObservedExactResidentBody = false
+    var uuidIndexFailureObservedExactEntityIdIndex = false
     var spawnCalls = 0
     var removeCalls = 0
     var failRemoval = false
+    var removalFailure = Option.empty[Throwable]
     override def diagnosticWorldName: String = s"world-$dimensionId"
     override def sameWorld(other: PodWorld): Boolean = other match
       case test: TestWorld => logicalWorldKey.eq(test.logicalWorldKey)
       case _ => false
-    override def findPod(podUuid: UUID): Option[ActivePodEntity] = entities.get(podUuid)
+    override def findPod(podUuid: UUID): Option[ActivePodEntity] = entitiesByUuid.get(podUuid)
+    override def isExactBodyResidentAndUnreplaced(body: ActivePodEntity): Boolean = body match
+      case test: TestEntity => residentBodies.exists(_ eq test) && entitiesByUuid.get(test.podUuid).forall(_ eq test) && entitiesById.get(test.entityId).forall(_ eq test)
+      case _ => false
     override def spawnPod(state: FloatingPodState): ActivePodEntity =
       events += "spawn"; spawnCalls += 1
       val entity = new TestEntity(Option(nextUuid).getOrElse(state.uuid), nextId)
-      entities.put(entity.podUuid, entity)
+      nextId += 1
+      residentBodies += entity
+      entitiesByUuid.put(entity.podUuid, entity)
+      entitiesById.put(entity.entityId, entity)
+      lastSpawnedBody = Some(entity)
       entity
+    override def spawnPod(state: FloatingPodState, retainCreatedBody: ActivePodEntity => Unit): ActivePodEntity =
+      require(retainCreatedBody != null, "retainCreatedBody must not be null")
+      val entity = spawnPod(state)
+      retainCreatedBody(entity)
+      if dropUuidIndexAfterCapture.contains(entity.podUuid) then
+        entitiesByUuid.remove(entity.podUuid)
+        uuidIndexFailureObservedExactResidentBody = residentBodies.exists(_ eq entity)
+        uuidIndexFailureObservedExactEntityIdIndex = entitiesById.get(entity.entityId).exists(_ eq entity)
+        throw uuidIndexFailure.getOrElse(new IllegalStateException(s"World $diagnosticWorldName did not index spawned FloatingPod ${state.uuid}"))
+      entity
+    def seed(podUuid: UUID): ActivePodEntity =
+      val entity = new TestEntity(podUuid, nextId)
+      nextId += 1
+      residentBodies += entity
+      entitiesByUuid.put(podUuid, entity)
+      entitiesById.put(entity.entityId, entity)
+      entity
+    def installUuidIndexReplacementKeepingResident(capturedBody: ActivePodEntity): ActivePodEntity =
+      val captured = capturedBody match
+        case test: TestEntity => test
+        case _ => throw new IllegalArgumentException("test world received a foreign captured body")
+      val entity = new TestEntity(captured.podUuid, nextId)
+      nextId += 1
+      residentBodies += entity
+      entitiesByUuid.put(captured.podUuid, entity)
+      entitiesById.put(entity.entityId, entity)
+      entity
+    def bodyIsResident(body: ActivePodEntity): Boolean = body match
+      case test: TestEntity => residentBodies.exists(_ eq test)
+      case _ => false
+    def bodyIsIndexedByEntityId(body: ActivePodEntity): Boolean = body match
+      case test: TestEntity => entitiesById.get(test.entityId).exists(_ eq test)
+      case _ => false
+    private def removeResidentAndIndexes(entity: TestEntity): Unit =
+      val index = residentBodies.indexWhere(_ eq entity)
+      if index >= 0 then residentBodies.remove(index)
+      entitiesById.get(entity.entityId).filter(_ eq entity).foreach(_ => entitiesById.remove(entity.entityId))
     override def removePod(entity: ActivePodEntity): Unit =
       events += "remove"; removeCalls += 1
-      if failRemoval then throw new IllegalStateException("remove failed")
-      entities.remove(entity.podUuid)
+      if failRemoval then throw removalFailure.getOrElse(new IllegalStateException("remove failed"))
+      entity match
+        case test: TestEntity =>
+          removeResidentAndIndexes(test)
+          entitiesByUuid.get(test.podUuid).filter(_ eq test).foreach(_ => entitiesByUuid.remove(test.podUuid))
+        case _ => throw new IllegalArgumentException("test world received a foreign body type")
 
   private final class TestGateway(events: mutable.ListBuffer[String]) extends ChunkTicketGateway:
     final class TestTicket extends ChunkTicket
@@ -445,6 +762,8 @@ class ActiveFloatingPodManagerTest:
     var deactivateCalls = 0
     var trackedDeactivationCalls = 0
     var genericUpdateCalls = 0
+    var trackedDriftCalls = 0
+    var trackedDriftResult: Option[Try[FloatingPodState]] = None
     var lastActivationTarget: Option[FloatingPodState] = None
     var lastActivationDimension: Option[Int] = None
     var lastTrackedActivationAttempt: Option[UUID] = None
@@ -481,6 +800,14 @@ class ActiveFloatingPodManagerTest:
       trackedDeactivationCalls += 1
       lastTrackedDeactivationAttempt = Some(attemptUuid)
       deactivate(podUuid, expectedOwner, expectedStateVersion)
+    override def updateTrackedActiveDrift(state: FloatingPodState, expectedAttemptUuid: UUID): Try[FloatingPodState] =
+      trackedDriftCalls += 1
+      trackedDriftResult.getOrElse {
+        val persisted = state.copy(stateVersion = state.stateVersion + 1L, lastUpdated = state.lastUpdated + 1L)
+        states.put(state.uuid, persisted)
+        activeLocator = activeLocator.map(_.copy(domainVersion = Some(persisted.stateVersion)))
+        Success(persisted)
+      }
     override def findPhysicalRecoveryLocator(podUuid: UUID): Try[Option[PhysicalRecoveryLocator]] = Success(activeLocator.orElse(preparedLocator).filter(_.podUuid == podUuid))
     private def activate(target: FloatingPodState, authenticatedOwner: UUID, expectedStateVersion: Long, dimensionId: Int, globalActiveLimit: Int): Try[AdmissionOutcome] =
       events += "activate"

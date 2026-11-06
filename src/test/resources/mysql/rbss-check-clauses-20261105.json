@@ -1,0 +1,169 @@
+{
+  "sourceReceiptSha256": "a6f1f92b9f417e0b9c978312d9c1352246a5f5da013507907b3ffb02a229a96e",
+  "rows": [
+    {
+      "constraintName": "ck_f3_01_01",
+      "checkClause": "(`singleton_fixed1` = 1)"
+    },
+    {
+      "constraintName": "ck_f3_01_02",
+      "checkClause": "(`backend` = _utf8mb4\\'MYSQL\\')"
+    },
+    {
+      "constraintName": "ck_f3_01_03",
+      "checkClause": "(`format_version` = 6)"
+    },
+    {
+      "constraintName": "ck_f3_01_04",
+      "checkClause": "(`bootstrap_state` in (_utf8mb4\\'BOOTSTRAPPING\\',_utf8mb4\\'READY\\'))"
+    },
+    {
+      "constraintName": "ck_f3_01_05",
+      "checkClause": "(`import_state` in (_utf8mb4\\'NONE\\',_utf8mb4\\'PENDING\\',_utf8mb4\\'COMMITTED\\'))"
+    },
+    {
+      "constraintName": "ck_f3_01_06",
+      "checkClause": "(`source_provenance_kind` in (_utf8mb4\\'FRESH_PLAN\\',_utf8mb4\\'FORMAT3_RESTORE\\',_utf8mb4\\'FORMAT2_IMPORT\\',_utf8mb4\\'SQLITE_IMPORT\\',_utf8mb4\\'MANAGED_INSTALL\\'))"
+    },
+    {
+      "constraintName": "ck_f3_01_07",
+      "checkClause": "(`limit_profile_encoding` = _utf8mb4\\'FP_SOURCE_LIMIT_PROFILE_BE_V1\\')"
+    },
+    {
+      "constraintName": "ck_f3_01_08",
+      "checkClause": "(((`import_state` = _utf8mb4\\'NONE\\') and (`import_manifest_sha256` is null) and (`import_operation_uuid` is null) and (`import_snapshot_sha256` is null) and (`import_receipt_sha256` is null)) or ((`import_state` = _utf8mb4\\'PENDING\\') and (`import_manifest_sha256` is not null) and (`import_operation_uuid` is not null) and (`import_snapshot_sha256` is not null) and (`import_receipt_sha256` is null)) or ((`import_state` = _utf8mb4\\'COMMITTED\\') and (`import_manifest_sha256` is not null) and (`import_operation_uuid` is not null) and (`import_snapshot_sha256` is not null) and (`import_receipt_sha256` is not null)))"
+    },
+    {
+      "constraintName": "ck_f3_01_09",
+      "checkClause": "((`bootstrap_state` <> _utf8mb4\\'READY\\') or ((`guard_manifest_sha256` is not null) and (`import_state` in (_utf8mb4\\'NONE\\',_utf8mb4\\'COMMITTED\\'))))"
+    },
+    {
+      "constraintName": "ck_f3_01_10",
+      "checkClause": "(`max_region_bytes` > 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_11",
+      "checkClause": "(`max_chunk_bytes` > 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_12",
+      "checkClause": "(`max_decompressed_bytes` > 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_13",
+      "checkClause": "(`max_nbt_depth` > 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_14",
+      "checkClause": "(`max_members` > 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_15",
+      "checkClause": "(`max_retained_bytes` > 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_16",
+      "checkClause": "(`max_sql_packet_bytes` > 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_17",
+      "checkClause": "(`max_native_artifact_bytes` > 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_18",
+      "checkClause": "(length(`ddl_sha256`) = 32)"
+    },
+    {
+      "constraintName": "ck_f3_01_19",
+      "checkClause": "((length(`provisioning_uuid`) = 16) and (`provisioning_uuid` <> unhex(repeat(_utf8mb4\\'00\\',16))))"
+    },
+    {
+      "constraintName": "ck_f3_01_20",
+      "checkClause": "((length(`expected_server_uuid`) = 16) and (`expected_server_uuid` <> unhex(repeat(_utf8mb4\\'00\\',16))))"
+    },
+    {
+      "constraintName": "ck_f3_01_21",
+      "checkClause": "((length(`expected_binding_uuid`) = 16) and (`expected_binding_uuid` <> unhex(repeat(_utf8mb4\\'00\\',16))))"
+    },
+    {
+      "constraintName": "ck_f3_01_22",
+      "checkClause": "((`import_manifest_sha256` is null) or (length(`import_manifest_sha256`) = 32))"
+    },
+    {
+      "constraintName": "ck_f3_01_23",
+      "checkClause": "((`import_operation_uuid` is null) or ((length(`import_operation_uuid`) = 16) and (`import_operation_uuid` <> unhex(repeat(_utf8mb4\\'00\\',16)))))"
+    },
+    {
+      "constraintName": "ck_f3_01_24",
+      "checkClause": "((`import_snapshot_sha256` is null) or (length(`import_snapshot_sha256`) = 32))"
+    },
+    {
+      "constraintName": "ck_f3_01_25",
+      "checkClause": "((`import_receipt_sha256` is null) or (length(`import_receipt_sha256`) = 32))"
+    },
+    {
+      "constraintName": "ck_f3_01_26",
+      "checkClause": "((`guard_manifest_sha256` is null) or (length(`guard_manifest_sha256`) = 32))"
+    },
+    {
+      "constraintName": "ck_f3_01_27",
+      "checkClause": "(length(`configuration_sha256`) = 32)"
+    },
+    {
+      "constraintName": "ck_f3_01_28",
+      "checkClause": "(length(`source_provenance_bytes`) > 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_29",
+      "checkClause": "(length(`source_provenance_sha256`) = 32)"
+    },
+    {
+      "constraintName": "ck_f3_01_30",
+      "checkClause": "(length(`limit_profile_bytes`) > 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_31",
+      "checkClause": "(length(`limit_profile_sha256`) = 32)"
+    },
+    {
+      "constraintName": "ck_f3_01_32",
+      "checkClause": "(`max_region_bytes` >= 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_33",
+      "checkClause": "(`max_chunk_bytes` >= 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_34",
+      "checkClause": "(`max_decompressed_bytes` >= 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_35",
+      "checkClause": "(`max_nbt_depth` >= 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_36",
+      "checkClause": "(`max_members` >= 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_37",
+      "checkClause": "(`max_retained_bytes` >= 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_38",
+      "checkClause": "(`max_sql_packet_bytes` >= 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_39",
+      "checkClause": "(`max_native_artifact_bytes` >= 0)"
+    },
+    {
+      "constraintName": "ck_f3_01_40",
+      "checkClause": "(`source_provenance_sha256` = unhex(sha2(`source_provenance_bytes`,256)))"
+    },
+    {
+      "constraintName": "ck_f3_01_41",
+      "checkClause": "(`limit_profile_sha256` = unhex(sha2(`limit_profile_bytes`,256)))"
+    }
+  ]
+}

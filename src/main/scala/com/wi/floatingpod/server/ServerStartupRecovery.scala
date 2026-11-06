@@ -5,6 +5,7 @@ import com.wi.floatingpod.storage.{RecoveryDimensionBackfillOutcome, RecoveryPod
 
 import java.util.UUID
 import scala.collection.mutable.ListBuffer
+import scala.util.control.NonFatal
 
 /** 将 dimension id 解析为当前服务器的同一世界包装；不得使用客户端状态。 */
 trait ServerWorldResolver:
@@ -17,12 +18,23 @@ final case class StartupRecoveryReport(recoveredUuids: List[UUID], ticketReport:
   require(recoveredUuids != null && ticketReport != null && failure != null && cleanupFailures != null, "startup recovery report values must not be null")
   def isClean: Boolean = failure.isEmpty && ticketReport.isClean
 
+/** 回滚保留原异常；fatal/中断必须逃出 Try/report 边界，不能被普通 primary 降格。 */
+private[server] object StartupRecoveryFailures:
+  def retain(primary: Throwable, secondary: Throwable): Throwable =
+    if primary eq secondary then primary
+    else if NonFatal(primary) && !NonFatal(secondary) then
+      secondary.addSuppressed(primary)
+      secondary
+    else
+      primary.addSuppressed(secondary)
+      primary
+
 /** 仅协调 S2 已接管 ticket、S1 原始行和 S3 manager；不在 Stopped 做任何世界工作。 */
 final class ServerStartupRecovery(store: RecoveryPodStore, tickets: ChunkLoadingManager, manager: ActiveFloatingPodManager, worlds: ServerWorldResolver):
   require(store != null && tickets != null && manager != null && worlds != null, "startup recovery dependencies must not be null")
 
   def recover(): StartupRecoveryReport =
-    val attempted = ListBuffer.empty[(UUID, PodWorld)]
+    val attempted = ListBuffer.empty[StartupRecoveryRollbackReceipt]
     try
       val rows = store.findDesiredActiveRows().get.sortBy(_.uuid.toString)
       tickets.reconcileOrphanedTickets(rows.iterator.map(_.uuid).toSet)
@@ -37,8 +49,9 @@ final class ServerStartupRecovery(store: RecoveryPodStore, tickets: ChunkLoading
       val desiredUuids = states.map(_.uuid).toSet
       states.foreach { state =>
         val world = worlds.resolve(state.dimensionId.getOrElse(throw new IllegalStateException(s"Active pod ${state.uuid} has no dimension"))).getOrElse(throw new IllegalStateException(s"No server world exists for active pod ${state.uuid}"))
-        manager.recoverCommittedActive(state, world).get
-        attempted += state.uuid -> world
+        val rollbackReceipt = manager.beginStartupRecovery(state, world)
+        attempted += rollbackReceipt
+        manager.recoverCommittedActiveForStartup(state, world, rollbackReceipt).get
         val ticket = tickets.managedTicketRecords().getOrElse(state.uuid, throw new IllegalStateException(s"Missing canonical ticket for ${state.uuid}"))
         if ticket.podUuid != state.uuid || !ticket.world.sameWorld(world) then throw new IllegalStateException(s"Ticket world mismatch for ${state.uuid}")
         val active = manager.getActivePod(state.uuid).getOrElse(throw new IllegalStateException(s"Manager did not publish ${state.uuid}"))
@@ -47,12 +60,20 @@ final class ServerStartupRecovery(store: RecoveryPodStore, tickets: ChunkLoading
       }
       val managerUuids = manager.getAllActivePods().toSet
       if managerUuids != desiredUuids then throw new IllegalStateException(s"Desired-active and manager UUID sets differ: desired=$desiredUuids manager=$managerUuids")
-      StartupRecoveryReport(states.map(_.uuid), tickets.latestRecoveryReport(), None)
+      val report = StartupRecoveryReport(states.map(_.uuid), tickets.latestRecoveryReport(), None)
+      manager.completeStartupRecoveries(attempted.toList)
+      report
     catch
       case failure: Throwable =>
-        val cleanupFailures = attempted.reverse.flatMap { case (uuid, world) => manager.abortRecoveredActive(uuid, world).failed.toOption }.toList
-        cleanupFailures.foreach(failure.addSuppressed)
-        StartupRecoveryReport(Nil, tickets.latestRecoveryReport(), Some(failure), cleanupFailures)
+        val cleanupFailures = ListBuffer.empty[Throwable]
+        attempted.reverseIterator.foreach { receipt =>
+          // Try 不捕获 fatal/中断；此边界暂存它们，只为继续清理其余已取得的 receipt。
+          try manager.abortStartupRecovery(receipt).get
+          catch case cleanup: Throwable => cleanupFailures += cleanup
+        }
+        val terminal = cleanupFailures.foldLeft(failure)(StartupRecoveryFailures.retain)
+        if !NonFatal(terminal) then throw terminal
+        StartupRecoveryReport(Nil, tickets.latestRecoveryReport(), Some(terminal), cleanupFailures.toList)
 
   private def firstCause(report: TicketRecoveryReport): Option[Throwable] =
     report.issues.collectFirst {

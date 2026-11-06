@@ -1,0 +1,1169 @@
+{
+  "format": "FP_MANAGED_DIRECT_STATIC_JDBC_CALIBRATION_V1",
+  "serverVersion": "9.7.2",
+  "sqlSdkSha256": "848F99FC14941DF52EA52FD51AA75BF13D3556FEEA4CBA2BF665D59A9FB0B5DB",
+  "connectorJarSha256": "69084713593A4AA8D07C383619B9639276F08BCCF8FAF1C562178147D389B1E1",
+  "observationSha256": "6b24e7ffede5a9eca932de0d50cd279f8a8e4ae285815814d09b532a48ce96e4",
+  "queryPlanSha256": "b7b3356b5f22e593ea3e7a97772124b8f62450500ef039b0fc35ff08441f71e0",
+  "sessionPlanSha256": "01ec5481900321879e9944ab03d10c197b1e33066161efff27ad1991230e3cac",
+  "captureRole": "Live direct SELECT transport metadata under the managed installer session; no object rows or schema/security approval",
+  "sets": [
+    {
+      "id": "RS02_TABLES",
+      "columns": [
+        {
+          "label": "TABLE_SCHEMA",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "TABLE_NAME",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "TABLE_TYPE",
+          "jdbcType": 1,
+          "typeName": "CHAR",
+          "precision": 11,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "ENGINE",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "VERSION",
+          "jdbcType": 4,
+          "typeName": "INT",
+          "precision": 10,
+          "scale": 0,
+          "nullable": 1,
+          "signed": true
+        },
+        {
+          "label": "ROW_FORMAT",
+          "jdbcType": 1,
+          "typeName": "CHAR",
+          "precision": 10,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "TABLE_COLLATION",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "CREATE_OPTIONS",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 256,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "TABLE_COMMENT",
+          "jdbcType": -1,
+          "typeName": "TEXT",
+          "precision": 6144,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        }
+      ]
+    },
+    {
+      "id": "RS03_COLUMNS",
+      "columns": [
+        {
+          "label": "TABLE_SCHEMA",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "TABLE_NAME",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "COLUMN_NAME",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "ORDINAL_POSITION",
+          "jdbcType": 4,
+          "typeName": "INT UNSIGNED",
+          "precision": 10,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "COLUMN_DEFAULT",
+          "jdbcType": -1,
+          "typeName": "MEDIUMTEXT",
+          "precision": 65535,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "IS_NULLABLE",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 3,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "DATA_TYPE",
+          "jdbcType": -1,
+          "typeName": "LONGTEXT",
+          "precision": 50331645,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "CHARACTER_MAXIMUM_LENGTH",
+          "jdbcType": -5,
+          "typeName": "BIGINT",
+          "precision": 19,
+          "scale": 0,
+          "nullable": 1,
+          "signed": true
+        },
+        {
+          "label": "CHARACTER_OCTET_LENGTH",
+          "jdbcType": -5,
+          "typeName": "BIGINT",
+          "precision": 19,
+          "scale": 0,
+          "nullable": 1,
+          "signed": true
+        },
+        {
+          "label": "NUMERIC_PRECISION",
+          "jdbcType": -5,
+          "typeName": "BIGINT UNSIGNED",
+          "precision": 20,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "NUMERIC_SCALE",
+          "jdbcType": -5,
+          "typeName": "BIGINT UNSIGNED",
+          "precision": 20,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "DATETIME_PRECISION",
+          "jdbcType": 4,
+          "typeName": "INT UNSIGNED",
+          "precision": 10,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "CHARACTER_SET_NAME",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "COLLATION_NAME",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "COLUMN_TYPE",
+          "jdbcType": -1,
+          "typeName": "LONGTEXT",
+          "precision": 16777215,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "COLUMN_KEY",
+          "jdbcType": 1,
+          "typeName": "CHAR",
+          "precision": 3,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "EXTRA",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 256,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "COLUMN_COMMENT",
+          "jdbcType": -1,
+          "typeName": "TEXT",
+          "precision": 6144,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "GENERATION_EXPRESSION",
+          "jdbcType": -1,
+          "typeName": "LONGTEXT",
+          "precision": 536870911,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        }
+      ]
+    },
+    {
+      "id": "RS04_STATISTICS",
+      "columns": [
+        {
+          "label": "TABLE_SCHEMA",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "TABLE_NAME",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "NON_UNIQUE",
+          "jdbcType": 4,
+          "typeName": "INT",
+          "precision": 10,
+          "scale": 0,
+          "nullable": 0,
+          "signed": true
+        },
+        {
+          "label": "INDEX_SCHEMA",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "INDEX_NAME",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "SEQ_IN_INDEX",
+          "jdbcType": 4,
+          "typeName": "INT UNSIGNED",
+          "precision": 10,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "COLUMN_NAME",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "COLLATION",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 1,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "SUB_PART",
+          "jdbcType": -5,
+          "typeName": "BIGINT",
+          "precision": 19,
+          "scale": 0,
+          "nullable": 1,
+          "signed": true
+        },
+        {
+          "label": "PACKED",
+          "jdbcType": 0,
+          "typeName": "NULL",
+          "precision": 0,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "NULLABLE",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 3,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "INDEX_TYPE",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 11,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "COMMENT",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 8,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "INDEX_COMMENT",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 2048,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "IS_VISIBLE",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 3,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "EXPRESSION",
+          "jdbcType": -1,
+          "typeName": "LONGTEXT",
+          "precision": 536870911,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        }
+      ]
+    },
+    {
+      "id": "RS05_TABLE_CONSTRAINTS",
+      "columns": [
+        {
+          "label": "CONSTRAINT_CATALOG",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "CONSTRAINT_SCHEMA",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "CONSTRAINT_NAME",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "TABLE_SCHEMA",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "TABLE_NAME",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "CONSTRAINT_TYPE",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 11,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "ENFORCED",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 3,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        }
+      ]
+    },
+    {
+      "id": "RS06_KEY_COLUMN_USAGE",
+      "columns": [
+        {
+          "label": "CONSTRAINT_CATALOG",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "CONSTRAINT_SCHEMA",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "CONSTRAINT_NAME",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "TABLE_CATALOG",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "TABLE_SCHEMA",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "TABLE_NAME",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "COLUMN_NAME",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "ORDINAL_POSITION",
+          "jdbcType": 4,
+          "typeName": "INT UNSIGNED",
+          "precision": 10,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "POSITION_IN_UNIQUE_CONSTRAINT",
+          "jdbcType": 4,
+          "typeName": "INT UNSIGNED",
+          "precision": 10,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "REFERENCED_TABLE_SCHEMA",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "REFERENCED_TABLE_NAME",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "REFERENCED_COLUMN_NAME",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        }
+      ]
+    },
+    {
+      "id": "RS07_REFERENTIAL_CONSTRAINTS",
+      "columns": [
+        {
+          "label": "CONSTRAINT_CATALOG",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "CONSTRAINT_SCHEMA",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "CONSTRAINT_NAME",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "UNIQUE_CONSTRAINT_CATALOG",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "UNIQUE_CONSTRAINT_SCHEMA",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "UNIQUE_CONSTRAINT_NAME",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "MATCH_OPTION",
+          "jdbcType": 1,
+          "typeName": "CHAR",
+          "precision": 7,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "UPDATE_RULE",
+          "jdbcType": 1,
+          "typeName": "CHAR",
+          "precision": 11,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "DELETE_RULE",
+          "jdbcType": 1,
+          "typeName": "CHAR",
+          "precision": 11,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "TABLE_NAME",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "REFERENCED_TABLE_NAME",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        }
+      ]
+    },
+    {
+      "id": "RS08_CHECK_CONSTRAINTS",
+      "columns": [
+        {
+          "label": "CONSTRAINT_CATALOG",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "CONSTRAINT_SCHEMA",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "CONSTRAINT_NAME",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "CHECK_CLAUSE",
+          "jdbcType": -1,
+          "typeName": "LONGTEXT",
+          "precision": 536870911,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "clause_octets",
+          "jdbcType": -5,
+          "typeName": "BIGINT",
+          "precision": 19,
+          "scale": 0,
+          "nullable": 0,
+          "signed": true
+        },
+        {
+          "label": "clause_sha256",
+          "jdbcType": -3,
+          "typeName": "VARBINARY",
+          "precision": 128,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        }
+      ]
+    },
+    {
+      "id": "RS09_TRIGGERS",
+      "columns": [
+        {
+          "label": "TRIGGER_SCHEMA",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "TRIGGER_NAME",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "EVENT_OBJECT_SCHEMA",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "EVENT_OBJECT_TABLE",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "EVENT_MANIPULATION",
+          "jdbcType": 1,
+          "typeName": "CHAR",
+          "precision": 6,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "ACTION_TIMING",
+          "jdbcType": 1,
+          "typeName": "CHAR",
+          "precision": 6,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "ACTION_ORDER",
+          "jdbcType": 4,
+          "typeName": "INT UNSIGNED",
+          "precision": 10,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "ACTION_ORIENTATION",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 3,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "ACTION_STATEMENT",
+          "jdbcType": -1,
+          "typeName": "LONGTEXT",
+          "precision": 536870911,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "SQL_MODE",
+          "jdbcType": 1,
+          "typeName": "CHAR",
+          "precision": 546,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "DEFINER",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 288,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "CHARACTER_SET_CLIENT",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "COLLATION_CONNECTION",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "DATABASE_COLLATION",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "statement_octets",
+          "jdbcType": -5,
+          "typeName": "BIGINT",
+          "precision": 19,
+          "scale": 0,
+          "nullable": 0,
+          "signed": true
+        },
+        {
+          "label": "statement_sha256",
+          "jdbcType": -3,
+          "typeName": "VARBINARY",
+          "precision": 128,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        }
+      ]
+    },
+    {
+      "id": "RS10_AUDITSELF",
+      "columns": [
+        {
+          "label": "ROUTINE_SCHEMA",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "ROUTINE_NAME",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "ROUTINE_TYPE",
+          "jdbcType": 1,
+          "typeName": "CHAR",
+          "precision": 9,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "ROUTINE_DEFINITION",
+          "jdbcType": -1,
+          "typeName": "LONGTEXT",
+          "precision": 536870911,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "SECURITY_TYPE",
+          "jdbcType": 1,
+          "typeName": "CHAR",
+          "precision": 7,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "SQL_DATA_ACCESS",
+          "jdbcType": 1,
+          "typeName": "CHAR",
+          "precision": 17,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "SQL_MODE",
+          "jdbcType": 1,
+          "typeName": "CHAR",
+          "precision": 546,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "DEFINER",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 288,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "CHARACTER_SET_CLIENT",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "COLLATION_CONNECTION",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "DATABASE_COLLATION",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "IS_DETERMINISTIC",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 3,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "DATA_TYPE",
+          "jdbcType": -1,
+          "typeName": "LONGTEXT",
+          "precision": 50331645,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "DTD_IDENTIFIER",
+          "jdbcType": -1,
+          "typeName": "LONGTEXT",
+          "precision": 50331645,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "ROUTINE_COMMENT",
+          "jdbcType": -1,
+          "typeName": "MEDIUMTEXT",
+          "precision": 65535,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "definition_octets",
+          "jdbcType": -5,
+          "typeName": "BIGINT",
+          "precision": 19,
+          "scale": 0,
+          "nullable": 1,
+          "signed": true
+        },
+        {
+          "label": "definition_sha256",
+          "jdbcType": -3,
+          "typeName": "VARBINARY",
+          "precision": 128,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        }
+      ]
+    },
+    {
+      "id": "RS11_AUDITSELF_PARAMETERS",
+      "columns": [
+        {
+          "label": "SPECIFIC_CATALOG",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "SPECIFIC_SCHEMA",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "SPECIFIC_NAME",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "ORDINAL_POSITION",
+          "jdbcType": -5,
+          "typeName": "BIGINT UNSIGNED",
+          "precision": 20,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "PARAMETER_MODE",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 5,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "PARAMETER_NAME",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "DATA_TYPE",
+          "jdbcType": -1,
+          "typeName": "LONGTEXT",
+          "precision": 50331645,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "DTD_IDENTIFIER",
+          "jdbcType": -1,
+          "typeName": "LONGTEXT",
+          "precision": 16777215,
+          "scale": 0,
+          "nullable": 0,
+          "signed": false
+        },
+        {
+          "label": "CHARACTER_SET_NAME",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        },
+        {
+          "label": "COLLATION_NAME",
+          "jdbcType": 12,
+          "typeName": "VARCHAR",
+          "precision": 64,
+          "scale": 0,
+          "nullable": 1,
+          "signed": false
+        }
+      ]
+    }
+  ]
+}

@@ -56,7 +56,9 @@ public class AnimationFileLoader {
 		} catch (Exception e) {
 			String message = "Couldn't load " + location;
 			GeckoLib.LOGGER.error(message, e);
-			throw new RuntimeException(new FileNotFoundException(location.toString()));
+			FileNotFoundException failure = new FileNotFoundException(location.toString());
+			failure.initCause(e);
+			throw new RuntimeException(failure);
 		}
 	}
 }

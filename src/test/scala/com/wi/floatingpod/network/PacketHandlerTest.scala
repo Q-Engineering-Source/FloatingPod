@@ -24,7 +24,43 @@ import scala.collection.mutable
 /** 验证公共网络注册表的首个可观察 tracer。 */
 class PacketHandlerTest:
   @Test
-  def registersTheFiveStableMessagesWithTheirReceiveSides(): Unit =
+  def correlatedRecallKeepsRequestAndExactContextUntilMainScheduling(): Unit =
+    val scheduler = new RecordingScheduler()
+    val endpoint = new RecordingServerEndpoint()
+    val context = new ControlledMessageContext()
+    val request = new C2SRecallOperationRequest(UUID.randomUUID(), UUID.randomUUID(), 4L)
+    new C2SRecallOperationHandler(scheduler, endpoint).onMessage(request, context)
+    assertTrue(endpoint.correlatedRecalls.isEmpty)
+    scheduler.runNext()
+    assertEquals(List((request, context)), endpoint.correlatedRecalls.toList)
+
+  @Test
+  def exactOwnerUninstallPreservesInstalledSuccessorAndQueuedRecallFailsClosed(): Unit =
+    ServerPacketRuntime.uninstall()
+    val original = new RecordingServerEndpoint()
+    val successor = new RecordingServerEndpoint()
+    val scheduler = new RecordingScheduler()
+    val handler = new C2SRecallHandler(scheduler, ServerPacketRuntime)
+    val request = new C2SRecallRequest(UUID.randomUUID(), 0L)
+    ServerPacketRuntime.install(original)
+    try
+      assertThrows(classOf[IllegalArgumentException], () => ServerPacketRuntime.uninstall(successor))
+      handler.onMessage(request, null)
+      scheduler.runNext()
+      assertEquals(1, original.recallContexts.size)
+      ServerPacketRuntime.uninstall(original)
+      handler.onMessage(request, null)
+      assertThrows(classOf[IllegalStateException], () => scheduler.runNext())
+      ServerPacketRuntime.install(successor)
+      assertThrows(classOf[IllegalArgumentException], () => ServerPacketRuntime.uninstall(original))
+      handler.onMessage(request, null)
+      scheduler.runNext()
+      assertEquals(1, successor.recallContexts.size)
+      ServerPacketRuntime.uninstall(successor)
+    finally ServerPacketRuntime.uninstall()
+
+  @Test
+  def registersOriginalFiveAndTwoCorrelatedRecallMessagesWithTheirReceiveSides(): Unit =
     val registrar = new RecordingPacketRegistrar()
 
     new PacketHandler(registrar).registerOnce()
@@ -35,7 +71,9 @@ class PacketHandlerTest:
         (classOf[C2SRecallRequest], 1, Side.SERVER),
         (classOf[S2CStateSync], 2, Side.CLIENT),
         (classOf[S2CReleaseResult], 3, Side.CLIENT),
-        (classOf[S2CRecallResult], 4, Side.CLIENT)
+        (classOf[S2CRecallResult], 4, Side.CLIENT),
+        (classOf[C2SRecallOperationRequest], 5, Side.SERVER),
+        (classOf[S2CRecallOperationStatus], 6, Side.CLIENT)
       ),
       registrar.registrations.map(entry => (entry.messageType, entry.discriminator, entry.receivingSide))
     )
@@ -49,9 +87,9 @@ class PacketHandlerTest:
     handler.registerOnce()
 
     assertEquals("floatingpod", PacketHandler.CHANNEL_NAME)
-    assertEquals(1, PacketHandler.PROTOCOL_VERSION)
-    assertEquals(5, registrar.registrations.size)
-    assertEquals(5, registrar.registrations.map(_.discriminator).distinct.size)
+    assertEquals(2, PacketHandler.PROTOCOL_VERSION)
+    assertEquals(7, registrar.registrations.size)
+    assertEquals(7, registrar.registrations.map(_.discriminator).distinct.size)
 
   @Test
   def connectionGateAcceptsOnlyTheExactVersionOnBothRemoteSides(): Unit =
@@ -151,6 +189,9 @@ private final class RecordingScheduler extends MainThreadScheduler:
   def runAll(): Unit = while work.nonEmpty do runNext()
 
 private final class RecordingServerEndpoint extends ServerPacketEndpoint:
+  val correlatedRecalls = mutable.ListBuffer.empty[(C2SRecallOperationRequest, MessageContext)]
+  override def receiveRecallOperation(message: C2SRecallOperationRequest, context: MessageContext): Unit =
+    correlatedRecalls += ((message, context))
   var releaseCalls = 0
   val releaseContexts = mutable.ListBuffer.empty[MessageContext]
   val recallContexts = mutable.ListBuffer.empty[MessageContext]

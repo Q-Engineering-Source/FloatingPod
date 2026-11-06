@@ -75,6 +75,7 @@ public class ClientSetupImpl implements SidedSetup {
      */
     @Override
     public void onPreInitialization() {
+        ClientRecallRequests.install();
         GeckoLib.initialize();
         registerModelFetcher();
         registerBloomIfAvailable();

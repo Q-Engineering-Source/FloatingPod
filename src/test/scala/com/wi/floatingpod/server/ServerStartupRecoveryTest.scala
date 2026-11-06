@@ -4,7 +4,7 @@ import com.wi.floatingpod.domain.FloatingPodState
 import com.wi.floatingpod.storage.*
 import net.minecraftforge.common.ForgeChunkManager
 import net.minecraftforge.common.ForgeChunkManager.Ticket
-import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertSame, assertTrue}
+import org.junit.jupiter.api.Assertions.{assertAll, assertEquals, assertFalse, assertSame, assertTrue}
 import org.junit.jupiter.api.Test
 
 import java.nio.charset.StandardCharsets
@@ -81,6 +81,24 @@ class ServerStartupRecoveryTest:
     assertTrue(fixture.manager.getActivePod(first.uuid).isEmpty)
 
   @Test
+  def partialRecoveryRetainsAttachedSourceBodyWhileRemovingOnlyBootMapping(): Unit =
+    val first = activeRow(61, Some(7))
+    val second = activeRow(62, Some(8))
+    val fixture = MultiRecoveryFixture(List(first, second), None)
+    fixture.tickets.requestTicket(first.uuid, fixture.world, 0, 0).get
+    fixture.tickets.requestTicket(second.uuid, fixture.world, 0, 0).get
+    val sourceBody = fixture.world.seed(first.uuid)
+
+    val report = fixture.recovery.recover()
+
+    assertTrue(report.failure.exists(_.getMessage.contains("No server world exists")))
+    assertSame(sourceBody, fixture.world.findPod(first.uuid).get)
+    assertTrue(fixture.manager.getActivePod(first.uuid).isEmpty)
+    assertTrue(fixture.tickets.managedTicketRecords().contains(first.uuid))
+    assertEquals(Some(first), fixture.repository.raw(first.uuid))
+    assertEquals(Some(second), fixture.repository.raw(second.uuid))
+
+  @Test
   def partialRecoveryCleanupFailureIsSuppressedWithoutLeavingManagerPublication(): Unit =
     val first = activeRow(8, Some(7))
     val second = activeRow(9, Some(8))
@@ -95,6 +113,78 @@ class ServerStartupRecoveryTest:
     assertTrue(report.failure.exists(_.getSuppressed.contains(removalFailure)))
     assertTrue(fixture.manager.getActivePod(first.uuid).isEmpty)
     assertTrue(fixture.tickets.managedTicketRecords().contains(first.uuid))
+
+  @Test
+  def fatalRollbackRetainsOriginalFailureAndContinuesOlderReceiptCleanup(): Unit =
+    assertRollbackEscape(new LinkageError("actual latest receipt fatal removal"))
+
+  @Test
+  def interruptedRollbackRetainsOriginalFailureAndContinuesOlderReceiptCleanup(): Unit =
+    assertRollbackEscape(new InterruptedException("actual latest receipt interrupted removal"))
+
+  @Test
+  def originalFatalRecoveryEscapesAfterRemainingReceiptCleanup(): Unit =
+    val original = new LinkageError("original third world resolution fatal")
+    assertRollbackEscape(original, new IllegalStateException("latest receipt removal failure"), original)
+
+  @Test
+  def originalInterruptedRecoveryEscapesAfterRemainingReceiptCleanup(): Unit =
+    val original = new InterruptedException("original third world resolution interrupted")
+    assertRollbackEscape(original, new IllegalStateException("latest receipt removal failure"), original)
+
+  private def assertRollbackEscape(cleanup: Throwable): Unit =
+    assertRollbackEscape(new IllegalStateException("original third world resolution failure"), cleanup, cleanup)
+
+  private def assertRollbackEscape(original: Throwable, cleanup: Throwable, expectedEscape: Throwable): Unit =
+    val first = activeRow(81, Some(7))
+    val second = activeRow(82, Some(7))
+    val third = activeRow(83, Some(8))
+    val repository = new RecoveryRepository(List(first, second, third))
+    val world = new RecoveryWorld(Some(cleanup), Some(second.uuid))
+    val tickets = new ChunkLoadingManager(repository, new RecoveryGateway)
+    val manager = new ActiveFloatingPodManager(repository, tickets)
+    List(first, second, third).foreach(row => tickets.requestTicket(row.uuid, world, 0, 0).get)
+    var originalReached = false
+    val recovery = new ServerStartupRecovery(repository, tickets, manager, new ServerWorldResolver:
+      override def resolve(dimensionId: Int): Option[PodWorld] =
+        if dimensionId == 8 then
+          assertEquals(Set(first.uuid, second.uuid), manager.getAllActivePods().toSet)
+          assertTrue(world.findPod(first.uuid).nonEmpty)
+          assertTrue(world.findPod(second.uuid).nonEmpty)
+          originalReached = true
+          throw original
+        Some(world)
+    )
+    var escaped = Option.empty[Throwable]
+    var returned = Option.empty[StartupRecoveryReport]
+    try returned = Some(recovery.recover())
+    catch case cause: Throwable => escaped = Some(cause)
+
+    def reaches(start: Throwable, target: Throwable): Boolean =
+      val seen = new java.util.IdentityHashMap[Throwable, java.lang.Boolean]()
+      def visit(current: Throwable): Boolean =
+        if current == null || seen.put(current, java.lang.Boolean.TRUE) != null then false
+        else (current eq target) || visit(current.getCause) || current.getSuppressed.exists(visit)
+      visit(start)
+
+    val observed = s"escaped=${escaped.map(_.getClass.getName)} returnedReport=${returned.nonEmpty} " +
+      s"removals=${world.removalAttempts.toList} remainingManager=${manager.getAllActivePods()}"
+    assertAll(observed,
+      () => assertTrue(originalReached, "both original receipts must be published before the third failure"),
+      () => assertTrue(returned.isEmpty, "fatal/interruption must not become an ordinary recovery report"),
+      () => assertSame(expectedEscape, escaped.orNull, "the original fatal/interruption object must escape"),
+      () => assertTrue(escaped.exists(reaches(_, original)), "original recovery failure identity must remain reachable"),
+      () => assertTrue(escaped.exists(reaches(_, cleanup)), "actual fatal/interruption identity must remain reachable"),
+      () => assertEquals(List(second.uuid, first.uuid), world.removalAttempts.toList,
+        "fatal latest receipt must not prevent older receipt cleanup"),
+      () => assertTrue(manager.getActivePod(first.uuid).isEmpty, "older receipt manager publication must be rolled back"),
+      () => assertTrue(manager.getActivePod(second.uuid).isEmpty, "latest receipt manager publication must be rolled back"),
+      () => assertTrue(world.findPod(first.uuid).isEmpty, "older receipt body must be removed"),
+      () => assertTrue(world.findPod(second.uuid).nonEmpty, "failed removal must not claim that its body was deleted"),
+      () => assertTrue(List(first, second, third).forall(row => repository.raw(row.uuid).contains(row)),
+        "rollback must retain original desired rows"),
+      () => assertEquals(Set(first.uuid, second.uuid, third.uuid), tickets.managedTicketRecords().keySet,
+        "rollback must retain original tickets"))
 
   @Test
   def dirtyTicketRecoveryCarriesExactCauseAndSkipsLegacyBackfillAndPublication(): Unit =
@@ -159,11 +249,16 @@ class ServerStartupRecoveryTest:
     )
 
   private final class RecoveryEntity(override val podUuid: UUID, override val entityId: Int) extends ActivePodEntity
-  private final class RecoveryWorld(removalFailure: Option[Throwable] = None) extends PodWorld:
+  private final class RecoveryWorld(removalFailure: Option[Throwable] = None,
+      removalFailurePod: Option[UUID] = None) extends PodWorld:
     private val entities = mutable.HashMap.empty[UUID, RecoveryEntity]
+    val removalAttempts = mutable.ListBuffer.empty[UUID]
     override val dimensionId: Int = 7
     override def diagnosticWorldName: String = "recovery-world"
     override def findPod(podUuid: UUID): Option[ActivePodEntity] = entities.get(podUuid)
+    override def isExactBodyResidentAndUnreplaced(body: ActivePodEntity): Boolean = body match
+      case entity: RecoveryEntity => entities.get(entity.podUuid).exists(_ eq entity)
+      case _ => false
     override def sameWorld(other: PodWorld): Boolean = this.eq(other)
     def seed(podUuid: UUID): ActivePodEntity =
       val entity = new RecoveryEntity(podUuid, entities.size + 1)
@@ -174,7 +269,8 @@ class ServerStartupRecoveryTest:
       entities.put(state.uuid, entity)
       entity
     override def removePod(entity: ActivePodEntity): Unit =
-      removalFailure.foreach(throw _)
+      removalAttempts += entity.podUuid
+      if removalFailurePod.forall(_ == entity.podUuid) then removalFailure.foreach(throw _)
       entities.remove(entity.podUuid)
 
   private final class RecoveryGateway(releaseFailure: Option[Throwable] = None) extends ChunkTicketGateway:
@@ -220,7 +316,7 @@ class ServerStartupRecoveryTest:
         case Some(existing) if existing != dimensionId => RecoveryDimensionBackfillOutcome.Rejected(RecoveryDimensionBackfillRejection.DimensionConflict(existing))
         case Some(_) => RecoveryDimensionBackfillOutcome.Ready(states(uuid))
         case None =>
-          val state = FloatingPodState(row.uuid, row.ownerUuid, row.stateVersion, row.worldName, row.posX, row.posY, row.posZ, row.yaw, row.pitch, row.isActive, row.lastUpdated, Some(dimensionId))
+          val state = FloatingPodState(row.uuid, row.ownerUuid, row.stateVersion, row.worldName, row.posX, row.posY, row.posZ, row.yaw, row.pitch, row.isActive, row.lastUpdated, Some(dimensionId), row.operatingMode)
           rows.put(uuid, row.copy(dimensionId = Some(dimensionId))); states.put(uuid, state); RecoveryDimensionBackfillOutcome.Ready(state)
     }
     override def findAllRecoverable(): Try[List[FloatingPodState]] = Success(states.values.toList)
@@ -252,4 +348,4 @@ class ServerStartupRecoveryTest:
 
   extension (row: StoredPodRow)
     private def toPublicStateOption: FloatingPodState =
-      FloatingPodState(row.uuid, row.ownerUuid, row.stateVersion, row.worldName, row.posX, row.posY, row.posZ, row.yaw, row.pitch, row.isActive, row.lastUpdated, row.dimensionId)
+      FloatingPodState(row.uuid, row.ownerUuid, row.stateVersion, row.worldName, row.posX, row.posY, row.posZ, row.yaw, row.pitch, row.isActive, row.lastUpdated, row.dimensionId, row.operatingMode)

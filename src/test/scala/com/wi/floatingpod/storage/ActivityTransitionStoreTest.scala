@@ -304,7 +304,7 @@ class ActivityTransitionStoreTest:
     finally bootstrap.close()
     val raw = DriverManager.getConnection(s"jdbc:sqlite:${database.toAbsolutePath}")
     try
-      val statement = raw.prepareStatement("UPDATE floating_pod_state SET is_active = 1, dimension_id = 11 WHERE uuid = ?")
+      val statement = raw.prepareStatement("UPDATE floating_pod_state SET is_active = 1, dimension_id = 11, operating_mode = 'WORLD_IDLE' WHERE uuid = ?")
       try
         statement.setBytes(1, uuidBytes(podUuid))
         statement.executeUpdate()

@@ -1,12 +1,19 @@
 package com.wi.floatingpod.server
 
 import com.wi.floatingpod.domain.FloatingPodState
+import com.wi.floatingpod.network.{ManagedServerRuntime, RuntimeEndpointRegistry, RuntimePersistence, UnavailableServerPacketEndpoint}
 import com.wi.floatingpod.storage.{PhysicalRecoveryChunk, PhysicalRecoveryLocatorReason, PhysicalRecoveryLocatorState}
 import com.wi.floatingpod.storage.sqlite.SQLiteFloatingPodRepository
 
 import net.minecraftforge.common.ForgeChunkManager
 import net.minecraftforge.common.ForgeChunkManager.Ticket
-import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertThrows, assertTrue}
+import net.minecraftforge.fml.common.event.{FMLServerStartingEvent, FMLServerStoppingEvent}
+import org.apache.logging.log4j.LogManager
+import org.apache.logging.log4j.core.{Appender, LogEvent, LoggerContext}
+import org.apache.logging.log4j.core.appender.AbstractAppender
+import org.apache.logging.log4j.core.config.Property
+import org.apache.logging.log4j.core.layout.PatternLayout
+import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertSame, assertThrows, assertTrue}
 import org.junit.jupiter.api.Test
 
 import java.nio.file.Files
@@ -215,6 +222,156 @@ class LiveCrashRecoveryTest:
     finally outside.close()
 
   @Test
+  def inventoryProbeFailureRetainsItsExactCauseAndUsesASafeReason(): Unit =
+    val fixture = Fixture.pending()
+    val failure = new IllegalStateException("private diagnostic payload")
+    try
+      fixture.inventoryFailure = failure
+
+      val step = fixture.recovery().begin()
+
+      step match
+        case RecoveryStep.Terminal(StartupPublicationDecision.Failed(reason, cause)) =>
+          assertEquals("world inventory failed", reason)
+          assertSame(failure, cause)
+          assertFalse(reason.contains("private diagnostic payload"))
+        case other => throw new AssertionError(s"Expected a failed recovery decision, got $other")
+    finally fixture.close()
+
+  @Test
+  def inventoryFailureRetainsExactCauseAndSuppressedCleanupAtFinalTermination(): Unit =
+    val fixture = Fixture.pending()
+    val cause = new IllegalStateException("synthetic internal failure marker")
+    val unregisterFailure = new IllegalStateException("synthetic unregister failure")
+    val lifecycleEvents = mutable.ListBuffer.empty[String]
+    val logEvents = mutable.ArrayBuffer.empty[CapturedRecoveryLog]
+    val appender = captureRecoveryLog(logEvents, () => lifecycleEvents += "diagnostic")
+    val logger = LogManager.getContext(false).asInstanceOf[LoggerContext].getLogger(classOf[ManagedServerRuntime].getName)
+    logger.addAppender(appender)
+    appender.start()
+    try
+      fixture.inventoryFailure = cause
+      val lifecycle = new RecoveryLifecycleProbe(fixture.repository, fixture.recovery(), lifecycleEvents, unregisterFailure)
+
+      lifecycle.start()
+      lifecycle.runtime.onServerStopping(null)
+
+      val report = lifecycle.runtime.latestStoppingReport.get
+      assertEquals(Some(RuntimeRecoveryTermination.Blocked("world inventory failed", Some(cause))), report.deferredTermination)
+      assertSame(cause, report.deferredFailure.get)
+      assertTrue(cause.getSuppressed.contains(unregisterFailure))
+      assertEquals(Some(unregisterFailure), report.deferredUnregisterFailure)
+      assertTrue(report.controlledStopSucceeded)
+      assertEquals(RecoveryExit.Blocked, report.deferredFinishReport.get.exit)
+      assertEquals(1, logEvents.size)
+      assertEquals("FloatingPod startup recovery failed before endpoint publication: world inventory failed", logEvents.head.event.getMessage.getFormattedMessage)
+      val loggedCause = Option(logEvents.head.event.getThrown).orElse(Option(logEvents.head.event.getThrownProxy).map(_.getThrowable))
+      assertSame(cause, loggedCause.orNull)
+      assertTrue(Option(logEvents.head.event.getThrown).exists(_.getStackTrace.nonEmpty) || Option(logEvents.head.event.getThrownProxy).exists(_.getStackTrace.nonEmpty))
+      assertFalse(logEvents.head.event.getMessage.getFormattedMessage.contains(cause.getMessage))
+      assertTrue(logEvents.head.rendered.contains("java.lang.IllegalStateException: synthetic internal failure marker"))
+      assertTrue(logEvents.head.rendered.contains("Suppressed: java.lang.IllegalStateException: synthetic unregister failure"))
+      assertTrue(lifecycleEvents.indexOf("diagnostic") < lifecycleEvents.indexOf("controlled-stop"))
+      assertEquals(0, lifecycle.persistenceStartCalls)
+      assertEquals(0, lifecycle.endpointInstallCalls)
+    finally
+      logger.removeAppender(appender)
+      appender.stop()
+      fixture.close()
+
+  @Test
+  def controlledStopFailureLogsCompleteSuppressedCauseAfterThePreStopRecoveryDiagnostic(): Unit =
+    val fixture = Fixture.pending()
+    val cause = new IllegalStateException("synthetic internal failure marker")
+    val stopFailure = new IllegalStateException("synthetic controlled stop failure marker")
+    val lifecycleEvents = mutable.ListBuffer.empty[String]
+    val logEvents = mutable.ArrayBuffer.empty[CapturedRecoveryLog]
+    val appender = captureRecoveryLog(logEvents, () => lifecycleEvents += "diagnostic")
+    val logger = LogManager.getContext(false).asInstanceOf[LoggerContext].getLogger(classOf[ManagedServerRuntime].getName)
+    logger.addAppender(appender)
+    appender.start()
+    try
+      fixture.inventoryFailure = cause
+      val lifecycle = new RecoveryLifecycleProbe(fixture.repository, fixture.recovery(), lifecycleEvents, controlledStopFailure = stopFailure)
+
+      val thrown = assertThrows(classOf[IllegalStateException], () => lifecycle.start())
+      lifecycle.runtime.onServerStopping(null)
+
+      val report = lifecycle.runtime.latestStoppingReport.get
+      assertSame(cause, thrown)
+      assertEquals(1, cause.getSuppressed.length)
+      assertSame(stopFailure, cause.getSuppressed.head)
+      assertSame(cause, report.deferredFailure.get)
+      assertEquals(Some(stopFailure), report.controlledStopFailure)
+      assertFalse(report.controlledStopSucceeded)
+      assertEquals(2, logEvents.size)
+      assertEquals("FloatingPod startup recovery failed before endpoint publication: world inventory failed", logEvents.head.event.getMessage.getFormattedMessage)
+      val preStopCause = Option(logEvents.head.event.getThrown).orElse(Option(logEvents.head.event.getThrownProxy).map(_.getThrowable))
+      assertSame(cause, preStopCause.orNull)
+      assertTrue(logEvents.head.rendered.contains("java.lang.IllegalStateException: synthetic internal failure marker"))
+      assertFalse(logEvents.head.rendered.contains(stopFailure.getMessage))
+      assertEquals("FloatingPod controlled stop request failed after startup recovery termination", logEvents.last.event.getMessage.getFormattedMessage)
+      val finalCause = Option(logEvents.last.event.getThrown).orElse(Option(logEvents.last.event.getThrownProxy).map(_.getThrowable))
+      assertSame(cause, finalCause.orNull)
+      assertTrue(logEvents.last.rendered.contains("java.lang.IllegalStateException: synthetic internal failure marker"))
+      assertTrue(logEvents.last.rendered.contains("Suppressed: java.lang.IllegalStateException: synthetic controlled stop failure marker"))
+      val diagnosticIndexes = lifecycleEvents.zipWithIndex.collect { case ("diagnostic", index) => index }
+      val stopIndex = lifecycleEvents.indexOf("controlled-stop")
+      assertEquals(2, diagnosticIndexes.size)
+      assertTrue(diagnosticIndexes.head < stopIndex)
+      assertTrue(stopIndex < diagnosticIndexes.last)
+      assertEquals(0, lifecycle.persistenceStartCalls)
+      assertEquals(0, lifecycle.endpointInstallCalls)
+    finally
+      logger.removeAppender(appender)
+      appender.stop()
+      fixture.close()
+
+  @Test
+  def normalRecoveryRejectionIsLoggedWithoutUnexpectedCauseOrEndpointPublication(): Unit =
+    val fixture = Fixture.pending()
+    val unknownUuid = UUID.fromString("00000000-0000-0000-0000-000000002098")
+    val lifecycleEvents = mutable.ListBuffer.empty[String]
+    val logEvents = mutable.ArrayBuffer.empty[CapturedRecoveryLog]
+    val appender = captureRecoveryLog(logEvents, () => lifecycleEvents += "diagnostic")
+    val logger = LogManager.getContext(false).asInstanceOf[LoggerContext].getLogger(classOf[ManagedServerRuntime].getName)
+    logger.addAppender(appender)
+    appender.start()
+    try
+      fixture.tickets.markWorldTicketPassCompleted(fixture.dimensionId)
+      fixture.inventoryObservations = List(fixture.observation(unknownUuid, 98))
+      val lifecycle = new RecoveryLifecycleProbe(fixture.repository, fixture.recovery(), lifecycleEvents)
+
+      lifecycle.start()
+      lifecycle.runtime.onServerStopping(null)
+
+      val report = lifecycle.runtime.latestStoppingReport.get
+      val termination = report.deferredTermination.get.asInstanceOf[RuntimeRecoveryTermination.Blocked]
+      assertTrue(termination.reason.contains(s"world inventory observed unknown pod $unknownUuid"))
+      assertTrue(termination.cause.isEmpty)
+      assertTrue(report.deferredFailure.isEmpty)
+      assertEquals(1, logEvents.size)
+      assertEquals(s"FloatingPod startup recovery blocked before endpoint publication: ${termination.reason}", logEvents.head.event.getMessage.getFormattedMessage)
+      assertTrue(logEvents.head.event.getThrown == null)
+      assertTrue(lifecycleEvents.indexOf("diagnostic") < lifecycleEvents.indexOf("controlled-stop"))
+      assertEquals(0, lifecycle.persistenceStartCalls)
+      assertEquals(0, lifecycle.endpointInstallCalls)
+    finally
+      logger.removeAppender(appender)
+      appender.stop()
+      fixture.close()
+
+  private def captureRecoveryLog(logEvents: mutable.ArrayBuffer[CapturedRecoveryLog], recordOrder: () => Unit): Appender =
+    val layout = PatternLayout.createDefaultLayout()
+    new AbstractAppender("live-crash-recovery-test", null, layout, false, Property.EMPTY_ARRAY):
+      override def append(event: LogEvent): Unit =
+        val snapshot = event.toImmutable
+        logEvents += CapturedRecoveryLog(snapshot, layout.toSerializable(snapshot))
+        recordOrder()
+
+  private final case class CapturedRecoveryLog(event: LogEvent, rendered: String)
+
+  @Test
   def verifiedLocatorEntityContradictionBlocksWithoutCleanup(): Unit =
     val fixture = Fixture.pending()
     try
@@ -307,6 +464,55 @@ class LiveCrashRecoveryTest:
     case RecoveryStep.Terminal(StartupPublicationDecision.Block(reason)) => assertTrue(reason.nonEmpty)
     case other => throw new AssertionError(s"Expected recovery block, got $other")
 
+private final class RecoveryLifecycleProbe(
+    repository: SQLiteFloatingPodRepository,
+    recovery: LiveCrashRecovery,
+    events: mutable.ListBuffer[String],
+    unregisterFailure: Throwable = null,
+    controlledStopFailure: Throwable = null
+):
+  var persistenceStartCalls = 0
+  var endpointInstallCalls = 0
+  private var callback: Option[ServerRecoveryTickPhase => Unit] = None
+
+  private val runtimePersistence = new RuntimePersistence:
+    override def start(event: FMLServerStartingEvent): Unit = { persistenceStartCalls += 1; events += "persistence-start" }
+    override def stop(event: FMLServerStoppingEvent): Unit = events += "persistence-stop"
+    override def abortStarted(): Unit = events += "persistence-abort"
+
+  private val endpointRegistry = new RuntimeEndpointRegistry:
+    override def install(endpoint: com.wi.floatingpod.network.ServerPacketEndpoint): Unit =
+      endpointInstallCalls += 1
+      events += "endpoint-install"
+    override def uninstall(): Unit = events += "endpoint-uninstall"
+
+  private val recoveryEvents = new RuntimeRecoveryEvents:
+    override def register(callback: ServerRecoveryTickPhase => Unit): Unit =
+      if RecoveryLifecycleProbe.this.callback.nonEmpty then throw new AssertionError("deferred callback registered twice")
+      RecoveryLifecycleProbe.this.callback = Some(callback)
+      events += "recovery-register"
+    override def unregister(): Unit =
+      RecoveryLifecycleProbe.this.callback = None
+      events += "recovery-unregister"
+      if unregisterFailure != null then throw unregisterFailure
+
+  private val controlledStop = new RuntimeControlledStop:
+    override def requestStop(): Unit =
+      events += "controlled-stop"
+      if controlledStopFailure != null then throw controlledStopFailure
+
+  val runtime = new ManagedServerRuntime(
+    repository,
+    runtimePersistence,
+    UnavailableServerPacketEndpoint,
+    endpointRegistry,
+    deferredRecovery = Some(DeferredRecoveryBundle(recovery, recoveryEvents, controlledStop))
+  )
+
+  def start(): Unit =
+    runtime.onServerAboutToStart(null)
+    runtime.onServerStarting(null)
+
 private object Fixture:
   val dimensionId = 7
 
@@ -343,11 +549,14 @@ private final class Fixture(
   val manager = new ActiveFloatingPodManager(repository, tickets)
   val world = new FixtureWorld(dimensionId, gateway.events)
   var inventoryObservations: List[ExistingWorldInventoryObservation] = Nil
+  var inventoryFailure: Throwable = null
   var generatedChunks: Set[PhysicalRecoveryChunk] = chunks
   val worlds = new ServerWorldResolver:
     override def resolve(requestedDimensionId: Int): Option[PodWorld] = if requestedDimensionId == dimensionId then Some(world) else None
   val inventory = new ExistingWorldInventory(new ExistingWorldInventoryProbe:
-    override def loadIfAlreadyGenerated(chunk: PhysicalRecoveryChunk): Boolean = generatedChunks.contains(chunk)
+    override def loadIfAlreadyGenerated(chunk: PhysicalRecoveryChunk): Boolean =
+      if inventoryFailure != null then throw inventoryFailure
+      generatedChunks.contains(chunk)
     override def loadedChunks(): List[ExistingWorldInventoryLoadedChunk] =
       inventoryObservations.groupBy(observation => (observation.dimensionId, observation.chunkX, observation.chunkZ)).toList.map { case ((dimension, chunkX, chunkZ), observations) =>
         ExistingWorldInventoryLoadedChunk(dimension, chunkX, chunkZ, observations)
@@ -383,6 +592,9 @@ private final class FixtureWorld(override val dimensionId: Int, events: mutable.
   var delayedRemoval = false
   override def diagnosticWorldName: String = "live-crash-recovery"
   override def sameWorld(other: PodWorld): Boolean = this.eq(other)
+  override def isExactBodyResidentAndUnreplaced(body: ActivePodEntity): Boolean = body match
+    case entity: FixtureEntity => entities.get(entity.podUuid).exists(_ eq entity)
+    case _ => false
   override def findPod(podUuid: UUID): Option[ActivePodEntity] = entities.get(podUuid)
   override def spawnPod(state: FloatingPodState): ActivePodEntity =
     val entity = new FixtureEntity(state.uuid, entities.size + 1)

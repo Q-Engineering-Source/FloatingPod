@@ -45,7 +45,7 @@ class FloatingPodLifecycleTest:
     stoppingMod.onServerStopped(null)
 
   private def lifecycleFor(runtime: ServerRuntime): ServerRuntimeLifecycle =
-    val lifecycle = new ServerRuntimeLifecycle(new ServerRuntimeFactory:
+    val lifecycle = ServerRuntimeLifecycle.legacyForTests(new ServerRuntimeFactory:
       override def create(settings: ServerRuntimeSettings): ServerRuntime = runtime
     )
     lifecycle.configure(ServerRuntimeSettings.sqlite(Paths.get("C:/tmp/floatingpod-fml-handler.db"), 1))

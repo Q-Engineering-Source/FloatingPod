@@ -98,6 +98,6 @@ private final class ForgeExistingWorldInventoryProbe(server: MinecraftServer) ex
 
   private def snapshotChunk(dimensionId: Int, chunk: Chunk): ExistingWorldInventoryLoadedChunk =
     val observations = chunk.getEntityLists.toList.flatMap(_.asScala.collect {
-      case entity: FloatingPodEntity => ExistingWorldInventoryObservation(entity.getUniqueID, dimensionId, chunk.x, chunk.z, entity.getEntityId)
+      case entity: FloatingPodEntity => ExistingWorldInventoryObservation(entity.sourcePodUuid(), dimensionId, chunk.x, chunk.z, entity.getEntityId)
     })
     ExistingWorldInventoryLoadedChunk(dimensionId, chunk.x, chunk.z, observations)

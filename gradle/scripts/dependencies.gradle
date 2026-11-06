@@ -1,8 +1,85 @@
 import java.security.MessageDigest
+import java.util.zip.ZipFile
 
-def localRuntimeMods = new File(gradle.gradleUserHomeDir, 'local-runtime-mods')
+def localRuntimeMods = new File(rootDir, 'libs')
+
+// 固定原始发行身份；仅经 modCompileOnly 重映射编译，不安装到运行实例。
+def nativeUiPins = [
+        'NFR-modularui-3.2.0-nfr.2.jar': 'E0ED1BD56ACF88E1E1F4EDEEAFE8BBA5049959D3864458586C27DA7BD0C78BDC',
+        'NFR-neofontrender-0.7.4-full.jar': '9D47EC44E180498548FCFB77D1B0CBF750624CE8AD9F6E16B7CB7D0A29932060',
+        'NFR-Neofontrender-ui-enhancements-0.8.5.jar': 'D1FA5A76A9DE3D39A5CA9CE94CF83F21844BD1C9B00114F27AC75A83B30FC643'
+]
+def verifyNativeUiPins = {
+    nativeUiPins.each { name, expectedHash ->
+        File artifact = new File(localRuntimeMods, name)
+        if (!artifact.isFile()) throw new GradleException("Missing fixed native UI artifact: ${artifact.absolutePath}")
+        String actualHash = MessageDigest.getInstance('SHA-256').digest(artifact.bytes).encodeHex().toString().toUpperCase()
+        if (actualHash != expectedHash) {
+            throw new GradleException("Native UI artifact SHA-256 mismatch: ${artifact.absolutePath}; expected ${expectedHash}, actual ${actualHash}")
+        }
+    }
+}
+configurations.modCompileOnly.incoming.beforeResolve { verifyNativeUiPins() }
+configurations.compileClasspath.incoming.beforeResolve { verifyNativeUiPins() }
+
+// 使用服务器已核验的独立前置；本 Mod 只编译 API，不嵌入前置或 JDBC driver。
+def sqlJdbcArtifact = providers.gradleProperty('sqljdbcdriverlib_artifact').map { file(it) }.orElse(
+        new File(rootDir, 'libs/sqljdbcdriverlib-0.2.0-rc.4.jar'))
+def sqlJdbcSha256 = 'C4D0A46CA2F0DF3E44F48F73DAF8CBC741C24DEE7595262EA28485FEC5BD5EEE'
+def sqlJdbcPayloadHashes = [
+        'mysql-connector-j-26.7.0.jar': '69084713593A4AA8D07C383619B9639276F08BCCF8FAF1C562178147D389B1E1',
+        'sqlite-jdbc-3.54.1.0.jar': 'F8DCE420A6016278497F4F0560F65602B9DB858DE141B541CF91A4644EBE4639',
+        'protobuf-java-4.31.1.jar': 'D60DFE7C68A0D38A248CCA96924F289DC7E1966A887EE7CAE397701AF08575AE'
+]
+def verifySqlJdbcArtifact = {
+    File artifact = sqlJdbcArtifact.get()
+    if (!artifact.isFile()) throw new GradleException("Missing required SQL-JDBC API artifact: ${artifact.absolutePath}")
+    String actual = MessageDigest.getInstance('SHA-256').digest(artifact.bytes).encodeHex().toString().toUpperCase()
+    if (actual != sqlJdbcSha256) throw new GradleException("SQL-JDBC artifact SHA-256 mismatch: expected ${sqlJdbcSha256}, actual ${actual}")
+}
+tasks.register('verifySqlJdbcArtifact') {
+    inputs.file(sqlJdbcArtifact)
+    doLast { verifySqlJdbcArtifact() }
+}
+def sqlJdbcTestPayloadDirectory = layout.buildDirectory.dir("sqljdbc-test-payload/${sqlJdbcSha256}")
+def prepareSqlJdbcTestPayload = tasks.register('prepareSqlJdbcTestPayload') {
+    dependsOn 'verifySqlJdbcArtifact'
+    inputs.file(sqlJdbcArtifact)
+    outputs.files(sqlJdbcPayloadHashes.keySet().collect { name -> sqlJdbcTestPayloadDirectory.map { directory -> directory.file(name) } })
+    doLast {
+        verifySqlJdbcArtifact()
+        File destination = sqlJdbcTestPayloadDirectory.get().asFile
+        if (!destination.isDirectory() && !destination.mkdirs()) throw new GradleException('Cannot create SQL-JDBC test payload directory')
+        new ZipFile(sqlJdbcArtifact.get()).withCloseable { zip ->
+            sqlJdbcPayloadHashes.each { name, expectedHash ->
+                def entry = zip.getEntry(name)
+                if (entry == null) throw new GradleException("Missing SQL-JDBC test payload: ${name}")
+                byte[] payload = zip.getInputStream(entry).withCloseable { it.readAllBytes() }
+                String actual = MessageDigest.getInstance('SHA-256').digest(payload).encodeHex().toString().toUpperCase()
+                if (actual != expectedHash) throw new GradleException("SQL-JDBC payload SHA-256 mismatch: ${name}")
+                new File(destination, name).bytes = payload
+            }
+        }
+    }
+}
+configurations.compileClasspath.incoming.beforeResolve { verifySqlJdbcArtifact() }
 
 repositories {
+    ivy {
+        name = 'FloatingPodNativeUiLocal'
+        url = localRuntimeMods.toURI()
+        patternLayout {
+            artifact '[artifact]-[revision].[ext]'
+        }
+        metadataSources {
+            artifact()
+        }
+        content {
+            includeModule 'local.floatingpod.nativeui', 'NFR-modularui'
+            includeModule 'local.floatingpod.nativeui', 'NFR-neofontrender'
+            includeModule 'local.floatingpod.nativeui', 'NFR-Neofontrender-ui-enhancements'
+        }
+    }
     // Other repositories described by default:
     // CleanroomMC: https://maven.cleanroommc.com
     maven {
@@ -14,16 +91,16 @@ repositories {
         url = 'https://curse.cleanroommc.com'
     }
     ivy {
-        name = 'CTMVintageLocal'
+        name = 'NeoContinuityVintageLocal'
         url = localRuntimeMods.toURI()
         patternLayout {
-            artifact 'CTM-CTM_Vintage-[revision].[ext]'
+            artifact 'Neo-CV-NeoContinuity-Vintage-[revision].[ext]'
         }
         metadataSources {
             artifact()
         }
         content {
-            includeModule 'ctm.vintage', 'ctm-vintage'
+            includeModule 'local.continuity', 'neo-continuity-vintage'
         }
     }
     ivy {
@@ -48,24 +125,31 @@ repositories {
 }
 
 dependencies {
+    modCompileOnly 'local.floatingpod.nativeui:NFR-modularui:3.2.0-nfr.2@jar'
+    modCompileOnly 'local.floatingpod.nativeui:NFR-neofontrender:0.7.4-full@jar'
+    modCompileOnly 'local.floatingpod.nativeui:NFR-Neofontrender-ui-enhancements:0.8.5@jar'
+    compileOnly files(sqlJdbcArtifact)
+    if (enable_junit_testing.toBoolean()) {
+        testImplementation files(prepareSqlJdbcTestPayload)
+    }
     // Scalar 在目标实例中提供运行时库；本项目只在编译期使用精确的 Scala 3 标准库。
     compileOnly "org.scala-lang:scala3-library_3:${scala_version}"
 
     // 阶段 1-B 探针扩充第一段：以下两项均为实例提供的外部前置，只在编译期解析签名，
     // 不得进入产物（不使用 implementation / runtimeOnly / contain / shadow / modImplementation）。
     // CraftTweaker2 与 ZenUtils 官方均未发布到 mavenCentral 或 Modrinth 的 1.12.2 CurseForge 专属版本，
-    // 只能经 CurseMaven 按项目 slug 与精确文件 ID 解析；版本号仍经具名 property 记录，不在此处写死。
-    compileOnly "curse.maven:${crafttweaker_curseforge_project_slug}:${crafttweaker_curseforge_file_id}"
-    compileOnly "curse.maven:${zenutils_curseforge_project_slug}:${zenutils_curseforge_file_id}"
+    // 原 CurseMaven 精确文件 ID 保持不变；已核 artifact 统一保存于仓库 libs。
+    compileOnly files(new File(localRuntimeMods, "${crafttweaker_curseforge_project_slug}-${crafttweaker_curseforge_file_id}.jar"))
+    compileOnly files(new File(localRuntimeMods, "${zenutils_curseforge_project_slug}-${zenutils_curseforge_file_id}.jar"))
     // Lumenized 是客户端侧可选前置（辉光注册入口 gregtech.client.utils.BloomEffectUtil 等），同样只在编译期解析签名。
     // 与前两项一致地用 compileOnly 而非 modCompileOnly：其发行 artifact 内部对 Vanilla 成员的引用确为 SRG 名
     // （已反编译核实），但本项目只会调用 Lumenized 自身声明的 API（非 Vanilla 成员），这部分符号名不受 SRG/MCP
     // 映射影响，故不需要 Unimined 的 remap 步骤；已用最小探针对该 API 表面实测编译通过，见 Memory/claude/FP-lumenized-dep.md。
-    compileOnly "curse.maven:${lumenized_curseforge_project_slug}:${lumenized_curseforge_file_id}"
+    compileOnly files(new File(localRuntimeMods, "${lumenized_curseforge_project_slug}-${lumenized_curseforge_file_id}.jar"))
 
-    // CTM 在开发客户端作为运行时模组提供。必须经 modRuntimeOnly 进入 Unimined 的 mod remap 管线，
-    // 不能从 run/client/mods 直接加载原始发行 JAR；固定到当前 Gradle 缓存的 local-runtime-mods 目录。
-    modRuntimeOnly "ctm.vintage:ctm-vintage:${ctm_vintage_release_version}@jar"
+    // NeoContinuity Vintage 替代 CTM，在开发客户端作为运行时模组提供。必须经 modRuntimeOnly 进入 Unimined 的 mod remap 管线，
+    // 不能从 run/client/mods 直接加载原始发行 JAR；固定到仓库 libs 目录，仍保留 modRuntimeOnly 重映射。
+    modRuntimeOnly "local.continuity:neo-continuity-vintage:${neo_continuity_vintage_release_version}@jar"
     // CCL 的发行 JAR 自带 SRG Access Transformer，开发运行时必须经 Unimined 重映射为 MCP 名称。
     modRuntimeOnly "local.codechicken:codechickenlib:${codechickenlib_release_version}@jar"
 
@@ -111,7 +195,7 @@ dependencies {
 
 configurations.modRuntimeOnly.incoming.beforeResolve {
     [
-            ["CTM-CTM_Vintage-${ctm_vintage_release_version}.jar", ctm_vintage_release_sha256],
+            ["Neo-CV-NeoContinuity-Vintage-${neo_continuity_vintage_release_version}.jar", neo_continuity_vintage_release_sha256],
             ["Lib-CodeChickenLib-1.12.2-${codechickenlib_release_version}-universal.jar", codechickenlib_release_sha256]
     ].each { name, expectedHash ->
         File artifact = new File(localRuntimeMods, name)

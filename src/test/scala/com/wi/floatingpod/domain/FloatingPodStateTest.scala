@@ -17,5 +17,13 @@ class FloatingPodStateTest:
     assertDoesNotThrow(() => state(active = true, dimensionId = Some(-1)))
     assertDoesNotThrow(() => state(active = false, dimensionId = None))
 
+  @Test
+  def activeUnclaimedStateRequiresWorldIdle(): Unit =
+    assertThrows(classOf[IllegalArgumentException], () => unclaimedState(PodOperatingMode.Normal))
+    assertDoesNotThrow(() => unclaimedState(PodOperatingMode.WorldIdle))
+
   private def state(active: Boolean, dimensionId: Option[Int]): FloatingPodState =
-    FloatingPodState(UUID.fromString("00000000-0000-0000-0000-000000000401"), None, 0L, "overworld", 0D, 64D, 0D, 0F, 0F, active, 1L, dimensionId)
+    FloatingPodState(UUID.fromString("00000000-0000-0000-0000-000000000401"), Some(UUID.fromString("00000000-0000-0000-0000-000000000402")), 0L, "overworld", 0D, 64D, 0D, 0F, 0F, active, 1L, dimensionId)
+
+  private def unclaimedState(mode: PodOperatingMode): FloatingPodState =
+    FloatingPodState(UUID.fromString("00000000-0000-0000-0000-000000000403"), None, 0L, "overworld", 0D, 64D, 0D, 0F, 0F, true, 1L, Some(0), mode)

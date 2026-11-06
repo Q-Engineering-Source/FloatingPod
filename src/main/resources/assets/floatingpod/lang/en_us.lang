@@ -1,0 +1,16 @@
+item.floatingpod.pod_debug_tool.name=FloatingPod Debug Tool
+floatingpod.debug_tool.inspect=Right-click a pod to inspect its state.
+floatingpod.debug_tool.toggle=Sneak-right-click your pod to change its world idle mode.
+floatingpod.debug_tool.place=Administrators can right-click a block to create an unclaimed pod.
+floatingpod.debug_tool.pending=Request pending; no committed result yet.
+floatingpod.debug_tool.rejected=Debug interaction rejected.
+floatingpod.debug_tool.unavailable=FloatingPod debug runtime is unavailable.
+floatingpod.debug_tool.faulted=Debug interaction failed. See the server diagnostics.
+floatingpod.debug_tool.state=Pod: %s | Owner: %s | Mode: %s | Active: %s | Initialization/recovery: %s | Reason: %s
+floatingpod.debug_tool.unclaimed=Unclaimed
+floatingpod.recall.waiting=Sending recall request; waiting for the server.
+floatingpod.recall.processing=Recall in progress. Please do not submit again.
+floatingpod.recall.committed=Recall confirmed.
+floatingpod.recall.refused=Recall was not accepted. Check the pod's state.
+floatingpod.recall.retained_failure=Recall result is still unconfirmed. Please do not submit again.
+floatingpod.recall.buffered=Please wait two seconds after the result before clicking again.

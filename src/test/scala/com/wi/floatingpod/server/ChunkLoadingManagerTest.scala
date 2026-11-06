@@ -1,12 +1,13 @@
 package com.wi.floatingpod.server
 
-import com.wi.floatingpod.domain.FloatingPodState
+import com.wi.floatingpod.domain.{FloatingPodState, PodOperatingMode}
+import com.wi.floatingpod.server.io.IoOperationTag
 import com.wi.floatingpod.storage.{FloatingPodRepository, RecoveryDimensionBackfillOutcome, RecoveryPodStore, StoredPodRow}
 
 import net.minecraftforge.common.ForgeChunkManager
 import net.minecraftforge.common.ForgeChunkManager.Ticket
 
-import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertSame, assertTrue}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertSame, assertThrows, assertTrue}
 import org.junit.jupiter.api.Test
 
 import java.util.UUID
@@ -99,6 +100,28 @@ class ChunkLoadingManagerTest:
     val depthManager = new ChunkLoadingManager(repository, depthGateway)
     assertTrue(depthManager.requestTicket(uuid, new TestWorld, 0, 0).isFailure)
     assertEquals(1, depthGateway.releaseCalls)
+
+  @Test
+  def initializationFailureRetainsExactReleaseFailureOnOriginalCause(): Unit =
+    val uuid = uuidOf(270)
+    val gateway = new TestGateway(mutable.ListBuffer.empty, maxDepth = 24, releaseFailuresRemaining = 1)
+    val cleanup = new IllegalStateException("original Forge release failure")
+    gateway.releaseFailure = cleanup
+    val manager = new ChunkLoadingManager(new TestRepository(stateFor(uuid, active = true)), gateway)
+
+    val primary = manager.requestTicket(uuid, new TestWorld, 0, 0).failed.get
+
+    assertTrue(primary.getMessage.contains("depth is below required"))
+    assertEquals(1, primary.getSuppressed.length)
+    assertSame(cleanup, primary.getSuppressed.head)
+    assertEquals(1, manager.getAllManagedTickets().size)
+    assertEquals(1, manager.pendingTicketReleaseCount())
+    assertEquals(1, gateway.requestCalls)
+    assertEquals(1, gateway.releaseCalls)
+    assertTrue(manager.reconcilePendingTicketReleases().isSuccess)
+    assertEquals(0, manager.pendingTicketReleaseCount())
+    assertEquals(0, manager.getAllManagedTickets().size)
+    assertSame(cleanup, primary.getSuppressed.head)
 
   @Test
   def initializationReleaseFailureRetainsOwnershipUntilRetrySucceedsBeforeAllocation(): Unit =
@@ -488,12 +511,100 @@ class ChunkLoadingManagerTest:
       beforeLaterMarker
     )
 
+  @Test
+  def dbFirstLocalRemovalWaitsForSubsequentEndThenCompactsOnlyExactTicketAck(): Unit =
+    val pod=uuidOf(701)
+    val world=new TestWorld
+    val gateway=new TestGateway(mutable.ListBuffer.empty, observeRelease=true)
+    val manager=new ChunkLoadingManager(new TestRepository(stateFor(pod,active=true)),gateway)
+    val ticket=manager.requestTicket(pod,world,0,0).get
+    val tag=IoOperationTag(uuidOf(702),1L,2L,uuidOf(703))
+    val attempt=uuidOf(704)
+    val view=new LocalRemovalView(pod)
+    val observer=new ExactBodyRemovalObserver(view)
+    val removal=observer.captureForIo(view.body,tag,attempt,3L,10L)
+    val footprint=manager.publicationTicketChunks(pod,world,ticket)
+    val pending=manager.captureReleaseForIo(tag,pod,attempt,3L,42,world,ticket,footprint)
+    observer.request(removal,10L)
+    assertTrue(observer.acknowledgeForIo(removal,10L).isEmpty)
+    assertTrue(observer.acknowledgeForIo(removal,11L).isEmpty)
+    assertEquals(0,gateway.releaseCalls)
+    assertEquals(1,view.requests)
+    view.indexed=false
+    val ack=observer.acknowledgeForIo(removal,12L).get
+    val released=manager.releaseForIo(pending,ack).get
+    assertEquals(1,gateway.releaseCalls)
+    assertEquals(25,pending.originalFootprint.size)
+    assertTrue(manager.managedTicketRecords().isEmpty)
+    manager.compactDbFirstRecallRelease(pending,released)
+    assertThrows(classOf[IllegalArgumentException],()=>manager.compactDbFirstRecallRelease(pending,released))
+    assertEquals(1,view.requests)
+    assertEquals(1,gateway.releaseCalls)
+
+  @Test
+  def dbFirstTicketFailureKeepsOriginalCauseAndCannotCompactOrConsumeForeignAck(): Unit =
+    val pod=uuidOf(711)
+    val world=new TestWorld
+    val gateway=new TestGateway(mutable.ListBuffer.empty,observeRelease=true)
+    val manager=new ChunkLoadingManager(new TestRepository(stateFor(pod,active=true)),gateway)
+    val ticket=manager.requestTicket(pod,world,0,0).get
+    val tag=IoOperationTag(uuidOf(712),1L,2L,uuidOf(713))
+    val attempt=uuidOf(714)
+    val view=new LocalRemovalView(pod)
+    val observer=new ExactBodyRemovalObserver(view)
+    val removal=observer.captureForIo(view.body,tag,attempt,3L,10L)
+    val pending=manager.captureReleaseForIo(tag,pod,attempt,3L,42,world,ticket,
+      manager.publicationTicketChunks(pod,world,ticket))
+    observer.request(removal,10L)
+    view.indexed=false
+    val ack=observer.acknowledgeForIo(removal,11L).get
+    val foreignView=new LocalRemovalView(pod)
+    val foreignObserver=new ExactBodyRemovalObserver(foreignView)
+    val foreign=foreignObserver.captureForIo(foreignView.body,tag.copy(operationId=uuidOf(715)),attempt,3L,10L)
+    foreignObserver.request(foreign,10L)
+    foreignView.indexed=false
+    assertTrue(manager.releaseForIo(pending,foreignObserver.acknowledgeForIo(foreign,11L).get).isFailure)
+    assertEquals(0,gateway.releaseCalls)
+    val primary=new IllegalStateException("actual ticket release failed",new IllegalArgumentException("release cause"))
+    gateway.releaseFailure=primary
+    gateway.releaseFailuresRemaining=1
+    assertSame(primary,manager.releaseForIo(pending,ack).failed.get)
+    assertSame(primary,pending.failure.get)
+    assertTrue(manager.managedTicketRecords().get(pod).exists(_.ticket eq ticket))
+    assertTrue(pending.acknowledgement.isEmpty)
+    assertThrows(classOf[IllegalArgumentException],()=>manager.compactDbFirstRecallRelease(pending,null))
+    assertEquals(1,gateway.releaseCalls)
+    assertEquals(1,view.requests)
+    assertEquals(25,pending.originalFootprint.size)
+
+  /** 与生产共享同一observer，集合延后撤销模拟removeEntity后的局部索引等待。 */
+  private final class LocalRemovalView(pod: UUID) extends RemovalWorldView:
+    val worldRef: AnyRef=new Object
+    val body: AnyRef=new Object
+    val dimensionId=0
+    private val owner=Thread.currentThread()
+    var indexed=true
+    var requests=0
+    def assertMain():Unit=require(Thread.currentThread() eq owner)
+    def describeBody(value:AnyRef):RemovalEntityView=
+      require(value eq body)
+      RemovalEntityView(body,worldRef,42,pod)
+    def requestRemove(value:AnyRef):Unit=
+      assertMain()
+      require(value eq body)
+      requests+=1
+    def snapshot(value:AnyRef,entityId:Int,podUuid:UUID):RemovalWorldSnapshot=
+      assertMain()
+      val exact=describeBody(value)
+      RemovalWorldSnapshot(0,Vector(worldRef),exact,
+        if indexed then Vector(RemovalIndexSlot("original-local-chunk",exact)) else Vector.empty)
+
   private def uuidOf(value: Int): UUID = UUID.fromString(f"00000000-0000-0000-0000-$value%012d")
   private def stateFor(uuid: UUID, active: Boolean): FloatingPodState =
-    FloatingPodState(uuid, None, 0L, "overworld", 160.0D, 64.0D, -48.0D, 0.0F, 0.0F, active, 1L, if active then Some(0) else None)
+    FloatingPodState(uuid, None, 0L, "overworld", 160.0D, 64.0D, -48.0D, 0.0F, 0.0F, active, 1L, if active then Some(0) else None, if active then PodOperatingMode.WorldIdle else PodOperatingMode.Normal)
 
   private def storedRow(uuid: UUID, active: Boolean, dimensionId: Option[Int]): StoredPodRow =
-    StoredPodRow(uuid, None, 0L, "overworld", 160.0D, 64.0D, -48.0D, 0.0F, 0.0F, active, 1L, dimensionId)
+    StoredPodRow(uuid, None, 0L, "overworld", 160.0D, 64.0D, -48.0D, 0.0F, 0.0F, active, 1L, dimensionId, if active then PodOperatingMode.WorldIdle else PodOperatingMode.Normal)
 
   private final class TestWorld(override val dimensionId: Int = 0) extends PodWorld:
     override def diagnosticWorldName: String = "chunk-loading-test"
@@ -510,9 +621,11 @@ class ChunkLoadingManagerTest:
       events: mutable.ListBuffer[String],
       ticketAvailable: Boolean = true,
       var maxDepth: Int = 25,
-      var releaseFailuresRemaining: Int = 0
+      var releaseFailuresRemaining: Int = 0,
+      observeRelease: Boolean = false
   ) extends ChunkTicketGateway:
     val forced = mutable.Set.empty[(Int, Int)]
+    private val registered = mutable.Set.empty[AnyRef]
     var requestCalls = 0
     var releaseCalls = 0
     var callbackRegistrations = 0
@@ -528,13 +641,26 @@ class ChunkLoadingManagerTest:
     override def request(world: PodWorld): Option[ChunkTicket] =
       events += "request"
       requestCalls += 1
-      if ticketAvailable then Some(new TestTicket) else None
+      if ticketAvailable then
+        val ticket=new TestTicket
+        if observeRelease then registered+=ticket.ownershipKey
+        Some(ticket)
+      else None
     override def release(ticket: ChunkTicket): Unit =
       events += "release"
       releaseCalls += 1
       if releaseFailuresRemaining > 0 then
         releaseFailuresRemaining -= 1
         throw Option(releaseFailure).getOrElse(new IllegalStateException("release failed"))
+      if observeRelease then
+        registered-=ticket.ownershipKey
+        forced.clear()
+    override def forcedChunks(ticket: ChunkTicket): Set[(Int,Int)] =
+      if observeRelease then forced.toSet else super.forcedChunks(ticket)
+    override private[server] def releaseSnapshot(ticket:ChunkTicket):TicketReleaseSnapshot=
+      if observeRelease then TicketReleaseSnapshot(registered.toVector,
+        if forced.nonEmpty then Vector(ticket.ownershipKey) else Vector.empty,forced.toSet)
+      else super.releaseSnapshot(ticket)
     override def maxChunkDepth(ticket: ChunkTicket): Int = maxDepth
     override def setChunkDepth(ticket: ChunkTicket, depth: Int): Unit = ()
     override def writePodUuid(ticket: ChunkTicket, podUuid: UUID): Unit = ticket.asInstanceOf[TestTicket].uuid = Some(podUuid)

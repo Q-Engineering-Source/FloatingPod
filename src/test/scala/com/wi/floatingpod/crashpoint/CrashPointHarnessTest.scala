@@ -265,6 +265,9 @@ class CrashPointHarnessTest:
       withRepository(path) { repository =>
         val gateway = new CrashPointTestSupport.TestGateway
         val manager = new ActiveFloatingPodManager(repository, new ChunkLoadingManager(repository, gateway), () => CrashPointTestSupport.FixedTimestamp)
+        val bindingUuid = UUID.fromString("00000000-0000-0000-0000-000000000817")
+        repository.createOrRetainLegacyUncertifiedBinding(bindingUuid, 1).get
+        repository.certifyPhysicalRecoveryBinding(bindingUuid, 1).get
         repository.insert(CrashPointTestSupport.state(uuid, active = false)).get
         assertTrue(manager.spawn(uuid, CrashPointTestSupport.OwnerUuid, 0L, oldWorld, 0.0D, 64.0D, 0.0D, 256).isSuccess)
         assertEquals(List(107), oldWorld.entityIds)
@@ -376,6 +379,9 @@ object CrashPointTestSupport:
     override def diagnosticWorldName: String = "crashpoint-test"
     override def findPod(podUuid: UUID): Option[ActivePodEntity] = entities.get(podUuid)
     override def sameWorld(other: PodWorld): Boolean = this.eq(other)
+    override def isExactBodyResidentAndUnreplaced(body: ActivePodEntity): Boolean = body match
+      case entity: TestEntity => entities.get(entity.podUuid).exists(_ eq entity)
+      case _ => false
 
     override def spawnPod(state: FloatingPodState): ActivePodEntity =
       spawnCalls += 1

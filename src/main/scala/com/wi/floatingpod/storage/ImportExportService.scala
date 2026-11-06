@@ -1,6 +1,7 @@
 package com.wi.floatingpod.storage
 
 import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonNull
@@ -8,7 +9,7 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonPrimitive
 import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
-import com.wi.floatingpod.domain.FloatingPodState
+import com.wi.floatingpod.domain.{FloatingPodState, PodOperatingMode}
 
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
@@ -63,7 +64,8 @@ final class JsonImportExport(repository: FloatingPodRepository) extends ImportEx
   import JsonImportExport.*
 
   private val logger: Logger = LogManager.getLogger("floatingpod-storage")
-  private val gson = new Gson()
+  private val legacyGson = new Gson()
+  private val currentGson = new GsonBuilder().serializeNulls().create()
 
   /**
    * 导出全部状态和确定性内容哈希，调用方可在传输后验证迁移包内容未被修改。
@@ -79,7 +81,7 @@ final class JsonImportExport(repository: FloatingPodRepository) extends ImportEx
       root.add("states", encodeStates(states))
       Files.writeString(
         file.toPath,
-        gson.toJson(root),
+        currentGson.toJson(root),
         StandardCharsets.UTF_8,
         StandardOpenOption.CREATE,
         StandardOpenOption.TRUNCATE_EXISTING,
@@ -129,8 +131,9 @@ final class JsonImportExport(repository: FloatingPodRepository) extends ImportEx
       throw new IllegalArgumentException("Migration package root must be a JSON object")
     val objectRoot = root.getAsJsonObject
     requireExactFields(objectRoot, RootFields, "migration package")
-    requireLong(objectRoot, "schema_version", "migration package") match
-      case CurrentSchemaVersion => ()
+    val packageVersion = requireLong(objectRoot, "schema_version", "migration package")
+    packageVersion match
+      case LegacySchemaVersion | CurrentSchemaVersion => ()
       case version => throw new IllegalArgumentException(s"Unsupported migration schema_version: $version")
     requireLong(objectRoot, "exported_at", "migration package") match
       case value if value >= 0L => ()
@@ -141,16 +144,29 @@ final class JsonImportExport(repository: FloatingPodRepository) extends ImportEx
     val statesElement = objectRoot.get("states")
     if !statesElement.isJsonArray then
       throw new IllegalArgumentException("states must be a JSON array")
-    val states = statesElement.getAsJsonArray.asScala.toList.map(decodeState)
+    val states = statesElement.getAsJsonArray.asScala.toList.map(decodeState(_, packageVersion))
     if states.map(_.uuid).distinct.size != states.size then
       throw new IllegalArgumentException("Migration package contains duplicate UUID values")
-    val computedHash = contentHashImported(states)
+    val computedHash = contentHashImported(states, packageVersion)
     if !MessageDigest.isEqual(
         suppliedHash.getBytes(StandardCharsets.US_ASCII),
         computedHash.getBytes(StandardCharsets.US_ASCII)
-      )
+    )
     then throw new IllegalArgumentException("Migration package content_hash does not match states")
-    states
+    packageVersion match
+      case LegacySchemaVersion =>
+        states.map { state =>
+          val mode = if state.ownerUuid.isEmpty && state.isActive then PodOperatingMode.WorldIdle else PodOperatingMode.Normal
+          state.copy(operatingMode = Some(mode))
+        }
+      case CurrentSchemaVersion =>
+        states.map { state =>
+          val mode = state.operatingMode.getOrElse(throw new IllegalArgumentException("v2 migration state is missing operating_mode"))
+          if state.isActive && state.ownerUuid.isEmpty && mode != PodOperatingMode.WorldIdle then
+            throw new IllegalArgumentException("Active unclaimed migration state must use WorldIdle")
+          state
+        }
+      case _ => throw new IllegalStateException(s"Validated unsupported migration schema_version: $packageVersion")
 
   private def parseStrictJson(content: String): JsonElement =
     val reader = new JsonReader(new StringReader(content))
@@ -208,16 +224,23 @@ final class JsonImportExport(repository: FloatingPodRepository) extends ImportEx
     json.addProperty("pitch", state.pitch)
     json.addProperty("is_active", state.isActive)
     json.addProperty("last_updated", state.lastUpdated)
+    json.addProperty("operating_mode", state.operatingMode.exportValue)
     json
 
-  private def decodeState(element: JsonElement): MigrationState =
+  private def decodeState(element: JsonElement, packageVersion: Long): MigrationState =
     if !element.isJsonObject then
       throw new IllegalArgumentException("Each migration state must be a JSON object")
     val state = element.getAsJsonObject
-    requireExactFields(state, StateFields, "migration state")
-    val owner = state.get("owner_uuid") match
-      case value if value.isJsonNull => None
-      case value => Some(UUID.fromString(requireString(value, "owner_uuid", "migration state")))
+    requireStateFields(state, packageVersion)
+    val owner = Option(state.get("owner_uuid")) match
+      case None => None
+      case Some(value) if value.isJsonNull => None
+      case Some(value) => Some(UUID.fromString(requireString(value, "owner_uuid", "migration state")))
+    val isActive = requireBoolean(state, "is_active", "migration state")
+    val operatingMode =
+      if packageVersion == CurrentSchemaVersion then
+        Some(PodOperatingMode.fromExportValue(requireString(state, "operating_mode", "migration state")))
+      else None
     MigrationState(
       uuid = UUID.fromString(requireString(state, "uuid", "migration state")),
       ownerUuid = owner,
@@ -228,32 +251,34 @@ final class JsonImportExport(repository: FloatingPodRepository) extends ImportEx
       posZ = requireFiniteDouble(state, "pos_z", "migration state"),
       yaw = requireFiniteFloat(state, "yaw", "migration state"),
       pitch = requireFiniteFloat(state, "pitch", "migration state"),
-      isActive = requireBoolean(state, "is_active", "migration state"),
-      lastUpdated = requireNonNegativeLong(state, "last_updated", "migration state")
+      isActive = isActive,
+      lastUpdated = requireNonNegativeLong(state, "last_updated", "migration state"),
+      operatingMode = operatingMode
     )
 
   private def contentHash(states: List[FloatingPodState]): String =
     val canonical = new JsonObject()
     canonical.addProperty("schema_version", CurrentSchemaVersion)
     canonical.add("states", encodeStates(states))
-    hashCanonical(canonical)
+    hashCanonical(canonical, CurrentSchemaVersion)
 
-  private def contentHashImported(states: List[MigrationState]): String =
+  private def contentHashImported(states: List[MigrationState], packageVersion: Long): String =
     val canonical = new JsonObject()
-    canonical.addProperty("schema_version", CurrentSchemaVersion)
-    canonical.add("states", encodeImportedStates(states))
-    hashCanonical(canonical)
+    canonical.addProperty("schema_version", packageVersion)
+    canonical.add("states", encodeImportedStates(states, packageVersion))
+    hashCanonical(canonical, packageVersion)
 
-  private def hashCanonical(canonical: JsonObject): String =
+  private def hashCanonical(canonical: JsonObject, packageVersion: Long): String =
     val digest = MessageDigest.getInstance("SHA-256")
-    HexFormat.of().formatHex(digest.digest(gson.toJson(canonical).getBytes(StandardCharsets.UTF_8)))
+    val serializer = if packageVersion == LegacySchemaVersion then legacyGson else currentGson
+    HexFormat.of().formatHex(digest.digest(serializer.toJson(canonical).getBytes(StandardCharsets.UTF_8)))
 
-  private def encodeImportedStates(states: List[MigrationState]): JsonArray =
+  private def encodeImportedStates(states: List[MigrationState], packageVersion: Long): JsonArray =
     val array = new JsonArray()
-    states.sortBy(_.uuid.toString).foreach(state => array.add(encodeImportedState(state)))
+    states.sortBy(_.uuid.toString).foreach(state => array.add(encodeImportedState(state, packageVersion)))
     array
 
-  private def encodeImportedState(state: MigrationState): JsonObject =
+  private def encodeImportedState(state: MigrationState, packageVersion: Long): JsonObject =
     val json = new JsonObject()
     json.addProperty("uuid", state.uuid.toString)
     state.ownerUuid match
@@ -268,12 +293,21 @@ final class JsonImportExport(repository: FloatingPodRepository) extends ImportEx
     json.addProperty("pitch", state.pitch)
     json.addProperty("is_active", state.isActive)
     json.addProperty("last_updated", state.lastUpdated)
+    if packageVersion == CurrentSchemaVersion then
+      json.addProperty("operating_mode", state.operatingMode.getOrElse(throw new IllegalStateException("v2 migration state has no operating_mode")).exportValue)
     json
 
   private def requireExactFields(objectValue: JsonObject, expected: Set[String], context: String): Unit =
     val actual = objectValue.keySet().asScala.toSet
     if actual != expected then
       throw new IllegalArgumentException(s"$context fields do not match the required schema")
+
+  private def requireStateFields(objectValue: JsonObject, packageVersion: Long): Unit =
+    val expected =
+      if packageVersion == LegacySchemaVersion && !objectValue.has("owner_uuid") then StateFieldsV1 - "owner_uuid"
+      else if packageVersion == LegacySchemaVersion then StateFieldsV1
+      else StateFieldsV2
+    requireExactFields(objectValue, expected, "migration state")
 
   private def requireString(objectValue: JsonObject, name: String, context: String): String =
     requireString(requiredField(objectValue, name, context), name, context)
@@ -325,9 +359,10 @@ final class JsonImportExport(repository: FloatingPodRepository) extends ImportEx
     }
 
 private[storage] object JsonImportExport:
-  private[storage] val CurrentSchemaVersion = 1L
+  private[storage] val LegacySchemaVersion = 1L
+  private[storage] val CurrentSchemaVersion = 2L
   private[storage] val RootFields = Set("schema_version", "exported_at", "content_hash", "states")
-  private[storage] val StateFields = Set(
+  private[storage] val StateFieldsV1 = Set(
     "uuid",
     "owner_uuid",
     "state_version",
@@ -340,6 +375,7 @@ private[storage] object JsonImportExport:
     "is_active",
     "last_updated"
   )
+  private[storage] val StateFieldsV2 = StateFieldsV1 + "operating_mode"
 
   private final case class MigrationState(
       uuid: UUID,
@@ -352,7 +388,8 @@ private[storage] object JsonImportExport:
       yaw: Float,
       pitch: Float,
       isActive: Boolean,
-      lastUpdated: Long
+      lastUpdated: Long,
+      operatingMode: Option[PodOperatingMode]
   ):
     def toRecalledState: FloatingPodState =
-      FloatingPodState(uuid, ownerUuid, stateVersion, worldName, posX, posY, posZ, yaw, pitch, false, lastUpdated, None)
+      FloatingPodState(uuid, ownerUuid, stateVersion, worldName, posX, posY, posZ, yaw, pitch, false, lastUpdated, None, operatingMode.getOrElse(throw new IllegalStateException("Validated migration state has no operating_mode")))

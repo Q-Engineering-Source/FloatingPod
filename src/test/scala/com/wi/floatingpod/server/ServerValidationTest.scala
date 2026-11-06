@@ -111,7 +111,7 @@ class ServerValidationTest:
 
   private def desiredRows(count: Int): List[StoredPodRow] =
     (1 to count).toList.map { index =>
-      StoredPodRow(uuidOf(200 + index), None, 0L, "overworld", 0.0D, 64.0D, 0.0D, 0.0F, 0.0F, isActive = true, 0L, Some(0))
+      StoredPodRow(uuidOf(200 + index), None, 0L, "overworld", 0.0D, 64.0D, 0.0D, 0.0F, 0.0F, isActive = true, 0L, Some(0), com.wi.floatingpod.domain.PodOperatingMode.WorldIdle)
     }
 
   private final class TestRepository(initialStates: List[FloatingPodState]) extends FloatingPodRepository:

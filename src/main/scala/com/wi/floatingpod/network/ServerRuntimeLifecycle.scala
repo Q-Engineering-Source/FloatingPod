@@ -1,13 +1,16 @@
 package com.wi.floatingpod.network
 
-import com.wi.floatingpod.server.{ActiveFloatingPodManager, CertifiedWorldBindingGate, ChunkLoadingManager, DeferredRecoveryBundle, LiveCrashRecovery, OwnershipValidator, PodWorldImpl, PositionValidator, RecoveryExit, RecoveryFinishReport, RecoveryStep, RuntimeRecoveryTermination, ServerRecoveryTickPhase, ServerStartupRecovery, ServerWorldResolver, StartupPublicationDecision, StartupRecoveryReport}
+import com.wi.floatingpod.bootstrap.{ProductionBootstrapInstallation,ProductionDbFirstBootstrapCallbacks,ProductionDedicatedBootstrapCallbacks}
+import com.wi.floatingpod.server.{ActiveFloatingPodManager, CertifiedWorldBindingGate, ChunkLoadingManager, DeferredRecoveryBundle, LiveCrashRecovery, OwnershipValidator, PodWorldImpl, PositionValidator, RecoveryExit, RecoveryFinishReport, RecoveryStep, RuntimeRecoveryTermination, ServerRecoveryTickPhase, ServerStartupRecovery, ServerWorldResolver, StartupPublicationDecision, StartupRecoveryReport, WorldBindingBootstrap}
 import com.wi.floatingpod.server.persistence.{PeriodicFlushService, PersistenceManager, PersistenceStoppingReport}
+import com.wi.floatingpod.server.save.ManagedSourceSaveLedger
 import com.wi.floatingpod.storage.{ActivityTransitionStore, FloatingPodRepository, PhysicalRecoveryStore, PlayerEntitlementStore, RecoveryPodStore}
 import com.wi.floatingpod.storage.sqlite.SQLiteFloatingPodRepository
 
 import net.minecraftforge.common.config.Configuration
 import net.minecraft.server.MinecraftServer
 import net.minecraftforge.fml.common.event.{FMLServerAboutToStartEvent, FMLServerStartingEvent, FMLServerStoppedEvent, FMLServerStoppingEvent}
+import org.apache.logging.log4j.{Level, LogManager}
 
 import java.io.File
 import java.nio.file.{Files, Path}
@@ -195,6 +198,8 @@ final class ManagedServerRuntime(
   require(validateWorldBinding != null, "validateWorldBinding must not be null")
   require(startupRecovery.isEmpty || deferredRecovery.isEmpty, "legacy startup recovery and deferred recovery are mutually exclusive")
 
+  private val logger = LogManager.getLogger(getClass)
+
   private var started = false
   private var persistenceStarted = false
   private var startupAborted = false
@@ -367,29 +372,49 @@ final class ManagedServerRuntime(
       terminateDeferredWithControlledStop(RecoveryExit.PlannedRemediation, RuntimeRecoveryTermination.PlannedRemediation(podUuid))
     case StartupPublicationDecision.Block(reason) =>
       terminateDeferredWithControlledStop(RecoveryExit.Blocked, RuntimeRecoveryTermination.Blocked(reason, None))
+    case StartupPublicationDecision.Failed(reason, cause) =>
+      terminateDeferredWithControlledStop(RecoveryExit.Blocked, RuntimeRecoveryTermination.Blocked(reason, Some(cause)))
 
-  /** 终端拒绝在完成 cleanup 证据后才向事件分发器失败；所有边界最多执行一次。 */
+  /** 终端拒绝先完成 cleanup 并记录一次诊断，再请求受控停服；所有边界最多执行一次。 */
   private def terminateDeferredWithControlledStop(exit: RecoveryExit, termination: RuntimeRecoveryTermination): Unit =
     deferredTermination = Some(termination)
+    val recoveryCause = termination match
+      case RuntimeRecoveryTermination.Blocked(_, cause) => cause
+      case _ => None
     val finishFailure =
       try
-        finishDeferred(exit, None)
+        finishDeferred(exit, recoveryCause)
         None
       catch case failure: Throwable => Some(failure)
-    val unregisterFailure = unregisterDeferredEvents(finishFailure)
+    val finishPrimary = recoveryCause.orElse(finishFailure)
+    val unregisterFailure = unregisterDeferredEvents(finishPrimary)
     deferredRecovering = false
     started = false
-    val primary = finishFailure.orElse(unregisterFailure)
+    val primary = finishPrimary.orElse(unregisterFailure)
+    logDeferredTerminal(termination, primary)
     val stopFailure =
       try
         requestControlledStop(primary)
         None
       catch case failure: Throwable => Some(failure)
     val terminalFailure = primary.orElse(stopFailure)
+    if controlledStopFailure.nonEmpty then terminalFailure.foreach(logControlledStopFailure)
     terminalFailure.foreach { failure =>
       deferredFailure = Some(failure)
-      throw failure
+      if recoveryCause.isEmpty || controlledStopFailure.nonEmpty then throw failure
     }
+
+  private def logDeferredTerminal(termination: RuntimeRecoveryTermination, primary: Option[Throwable]): Unit = termination match
+    case RuntimeRecoveryTermination.Blocked(reason, Some(cause)) =>
+      logger.log(Level.ERROR, s"FloatingPod startup recovery failed before endpoint publication: $reason", cause)
+    case RuntimeRecoveryTermination.Blocked(reason, None) =>
+      primary match
+        case Some(cause) => logger.log(Level.ERROR, s"FloatingPod startup recovery blocked before endpoint publication: $reason", cause)
+        case None => logger.log(Level.ERROR, s"FloatingPod startup recovery blocked before endpoint publication: $reason")
+    case _ => ()
+
+  private def logControlledStopFailure(primary: Throwable): Unit =
+    logger.log(Level.ERROR, "FloatingPod controlled stop request failed after startup recovery termination", primary)
 
   /** 完成 still-recovering 分支的 cleanup；调用方负责在报告发布后决定是否传播聚合失败。 */
   private def finishRecoveringDeferred(exit: RecoveryExit): Option[Throwable] =
@@ -549,6 +574,8 @@ final class ManagedServerRuntime(
 /** 创建已完整装配但尚未启动的服务器运行时。 */
 trait ServerRuntimeFactory:
   def create(settings: ServerRuntimeSettings): ServerRuntime
+  private[network] def createClaimed(server: MinecraftServer): ServerRuntime =
+    throw new IllegalStateException("factory does not provide an actual claimed dedicated runtime")
 
 /** 生产装配工厂；所有 server-private 资源只在服务端启动后按不可变设置创建。 */
 final class ForgeServerRuntimeFactory(
@@ -588,7 +615,17 @@ final class ForgeServerRuntimeFactory(
     ForgeServerRuntimeFactory.defaultDeferredBundleFactory
   )
 
+  override private[network] def createClaimed(server: MinecraftServer): ServerRuntime =
+    ProductionBootstrapInstallation.requireClaimedCallbacks(server) match
+      case _:ProductionDbFirstBootstrapCallbacks=>DbFirstDedicatedRuntime.claimed(server,modInstance)
+      case _:ProductionDedicatedBootstrapCallbacks=>DedicatedProjectionRuntime.claimed(server,modInstance)
+      case _=>throw new IllegalStateException("actual production callback family required for dedicated runtime")
+
   override def create(settings: ServerRuntimeSettings): ServerRuntime =
+    throw new IllegalStateException("Legacy SQLite production runtime is disabled; MySQL requires a claimed dedicated runtime")
+
+  /** 仅供历史装配回归；生产入口不得调用旧 SQLite 装配。 */
+  private[network] def createLegacyForTests(settings: ServerRuntimeSettings): ServerRuntime =
     require(settings != null, "settings must not be null")
     var repository: FloatingPodRepository = null
     try
@@ -648,18 +685,30 @@ final class ForgeServerRuntimeFactory(
     case _ => throw new IllegalStateException("S5 runtime requires ActivityTransitionStore, RecoveryPodStore, PlayerEntitlementStore, and PhysicalRecoveryStore")
 
 object ForgeServerRuntimeFactory:
-  /** 为一个已接纳的 physical recovery store 构造单一只读 AboutToStart binding validator。 */
+  /**
+   * 为一个已接纳的 physical recovery store 构造 AboutToStart binding validator。
+   * 本世界首次启动（尚无 binding）时先完成一次 world binding cutover，随后仍由严格只读 gate 校验；
+   * 已存在 binding 时 bootstrap 不介入，gate 语义完全不变。
+   */
   val defaultWorldBindingGateFactory: PhysicalRecoveryStore => (FMLServerAboutToStartEvent => Unit) = store =>
     val gate = new CertifiedWorldBindingGate(store)
     event =>
+      WorldBindingBootstrap.ensureCertifiedBinding(store, event)
       gate.validate(event)
       ()
 
   val defaultDeferredBundleFactory: (FloatingPodRepository, ChunkLoadingManager, ActiveFloatingPodManager, ServerWorldResolver, () => MinecraftServer) => DeferredRecoveryBundle =
     (repository, tickets, manager, worlds, serverSupplier) => LiveCrashRecovery.productionBundle(repository, tickets, manager, worlds, serverSupplier)
 
-/** 约束 pre-init、server start 与 stop 顺序，并在成功停服后允许同一设置重启。 */
-final class ServerRuntimeLifecycle(factory: ServerRuntimeFactory):
+/** 历史运行时测试装配入口；正常 FML 生命周期使用公开构造器。 */
+object ServerRuntimeLifecycle:
+  /** 仅保留旧运行时的隔离行为回归，不代表 production 支持 SQLite。 */
+  private[floatingpod] def legacyForTests(factory: ServerRuntimeFactory): ServerRuntimeLifecycle =
+    new ServerRuntimeLifecycle(factory, true)
+
+/** 约束 server start 与 stop 顺序；production 仅接纳 dedicated MySQL runtime。 */
+final class ServerRuntimeLifecycle private (factory: ServerRuntimeFactory, legacyTestMode: Boolean):
+  def this(factory: ServerRuntimeFactory) = this(factory, false)
   require(factory != null, "factory must not be null")
 
   private var settings: Option[ServerRuntimeSettings] = None
@@ -671,7 +720,12 @@ final class ServerRuntimeLifecycle(factory: ServerRuntimeFactory):
   def latestStoppingReport: Option[RuntimeStoppingReport] = synchronized { lastStoppingReport }
   def latestFinalShutdownReport: Option[FinalShutdownReport] = synchronized { lastFinalShutdownReport }
 
-  def configure(suggestedConfigurationFile: File): Unit = configure(ServerRuntimeSettings.load(suggestedConfigurationFile))
+  /** SQLite/FML settings loader is isolated to the explicit legacy-test fixture; production uses managed MySQL early config. */
+  def configure(suggestedConfigurationFile: File): Unit =
+    require(suggestedConfigurationFile != null, "suggested configuration file must not be null")
+    if !legacyTestMode then
+      throw new IllegalStateException("Production server lifecycle does not load SQLite settings; use the fixed managed database configuration")
+    configure(ServerRuntimeSettings.load(suggestedConfigurationFile))
 
   def configure(configuredSettings: ServerRuntimeSettings): Unit = synchronized {
     require(configuredSettings != null, "configuredSettings must not be null")
@@ -681,22 +735,28 @@ final class ServerRuntimeLifecycle(factory: ServerRuntimeFactory):
   }
 
   def onServerAboutToStart(event: FMLServerAboutToStartEvent): Unit = synchronized {
-    val configured = settings.getOrElse(throw new IllegalStateException("Server runtime lifecycle is not configured"))
     if activeRuntime.nonEmpty then throw new IllegalStateException("Server runtime lifecycle is already started")
     lastStoppingReport = None
     lastFinalShutdownReport = None
-    val runtime = factory.create(configured)
+    val runtime = if legacyTestMode then
+      factory.create(settings.getOrElse(throw new IllegalStateException("Server runtime lifecycle is not configured")))
+    else
+      val server = Option(event).flatMap(value => Option(value.getServer)).getOrElse(
+        throw new IllegalArgumentException("actual server required at AboutToStart"))
+      if !server.isDedicatedServer then
+        throw new IllegalStateException("Integrated MySQL runtime is not provided; refusing legacy SQLite runtime before resource creation")
+      factory.createClaimed(server)
     activeRuntime = Some(runtime)
     runtimeStarted = false
     try runtime.onServerAboutToStart(event)
     catch
       case primary: Throwable =>
         try runtime.onServerStopped(null)
-        catch case cleanup: Throwable => primary.addSuppressed(cleanup)
+        catch case cleanup: Throwable => ManagedSourceSaveLedger.suppressSecondary(primary, cleanup)
         captureReports(runtime)
         lastFinalShutdownReport.foreach { report =>
-          report.closeFailure.foreach(primary.addSuppressed)
-          report.resolverClearFailure.foreach(primary.addSuppressed)
+          report.closeFailure.foreach(cleanup => ManagedSourceSaveLedger.suppressSecondary(primary, cleanup))
+          report.resolverClearFailure.foreach(cleanup => ManagedSourceSaveLedger.suppressSecondary(primary, cleanup))
         }
         activeRuntime = None
         runtimeStarted = false

@@ -4,6 +4,7 @@ import com.wi.floatingpod.domain.FloatingPodState
 import com.wi.floatingpod.storage.{FloatingPodRepository, PhysicalRecoveryStore}
 
 import java.util.UUID
+import scala.collection.mutable.ListBuffer
 
 /** 启动发布的不可变结论；Permit 只表示最终 inventory 已收敛。 */
 sealed trait StartupPublicationDecision
@@ -15,6 +16,8 @@ object StartupPublicationDecision:
     require(podUuid != null, "podUuid must not be null")
   final case class Block(reason: String) extends StartupPublicationDecision:
     require(reason != null && reason.nonEmpty, "reason must not be blank")
+  final case class Failed(reason: String, cause: Throwable) extends StartupPublicationDecision:
+    require(reason != null && reason.nonEmpty && cause != null, "failure decision values must not be null or blank")
 
 /** 真实 runtime 与测试替身共享的包内 inventory/动作边界。 */
 private[server] trait StartupReconciliationInventory:
@@ -23,6 +26,9 @@ private[server] trait StartupReconciliationInventory:
   def entityUuids: Set[UUID]
   def managerUuids: Set[UUID]
   def destructiveRemediationReady: Boolean = true
+  def beginStartupRecovery(active: FloatingPodState): Unit
+  def completeStartupRecoveries(podUuids: List[UUID]): Unit
+  def abortStartupRecovery(podUuid: UUID): Unit
   def requestTicket(podUuid: UUID): Unit
   def spawnEntity(active: FloatingPodState): Unit
   def publishMapping(active: FloatingPodState): Unit
@@ -34,27 +40,51 @@ final class StartupReconciliation(inventory: StartupReconciliationInventory):
   require(inventory != null, "inventory must not be null")
 
   def decidePublication(): StartupPublicationDecision =
+    val attempted = ListBuffer.empty[UUID]
+    try
+      decidePublication(attempted) match
+        case permit: StartupPublicationDecision.Permit =>
+          inventory.completeStartupRecoveries(attempted.toList)
+          permit
+        case StartupPublicationDecision.Block(reason) =>
+          val failure = new IllegalStateException(s"Startup reconciliation blocked: $reason")
+          rollbackStartupRecoveries(attempted, failure)
+          if failure.getSuppressed.isEmpty then StartupPublicationDecision.Block(reason)
+          else StartupPublicationDecision.Failed(reason, failure)
+        case StartupPublicationDecision.Failed(reason, cause) =>
+          rollbackStartupRecoveries(attempted, cause)
+          StartupPublicationDecision.Failed(reason, cause)
+        case remediation: StartupPublicationDecision.RemediationRequiresFreshBoot =>
+          if attempted.isEmpty then remediation
+          else
+            val failure = new IllegalStateException("Startup remediation cannot retain active publication receipts")
+            rollbackStartupRecoveries(attempted, failure)
+            StartupPublicationDecision.Failed(failure.getMessage, failure)
+    catch
+      case primary: Throwable =>
+        rollbackStartupRecoveries(attempted, primary)
+        throw primary
+
+  private def decidePublication(attempted: ListBuffer[UUID]): StartupPublicationDecision =
     val committed = inventory.committedStates
     if committed.size == 1 then
       val state = committed.head
       if !state.isActive then remediateInactive(state)
       else if state.dimensionId.isEmpty then StartupPublicationDecision.Block("committed state is not a complete active state")
       else if inventory.ticketUuids == Set(state.uuid) && inventory.entityUuids == Set(state.uuid) && inventory.managerUuids.isEmpty then
-        inventory.publishMapping(state)
+        recoverActive(state, requestMissingTicket = false, spawnMissingEntity = false, attempted = attempted)
         val expected = Set(state.uuid)
         if inventory.committedStates == List(state) && inventory.ticketUuids == expected && inventory.entityUuids == expected && inventory.managerUuids == expected then
           StartupPublicationDecision.Permit(List(state.uuid))
         else StartupPublicationDecision.Block("final inventory did not converge")
       else if inventory.ticketUuids == Set(state.uuid) && inventory.entityUuids.isEmpty && inventory.managerUuids.isEmpty then
-        inventory.spawnEntity(state)
-        inventory.publishMapping(state)
+        recoverActive(state, requestMissingTicket = false, spawnMissingEntity = true, attempted = attempted)
         val expected = Set(state.uuid)
         if inventory.committedStates == List(state) && inventory.ticketUuids == expected && inventory.entityUuids == expected && inventory.managerUuids == expected then
           StartupPublicationDecision.Permit(List(state.uuid))
         else StartupPublicationDecision.Block("final inventory did not converge")
       else if inventory.ticketUuids.isEmpty && inventory.entityUuids == Set(state.uuid) && inventory.managerUuids.isEmpty then
-        inventory.requestTicket(state.uuid)
-        inventory.publishMapping(state)
+        recoverActive(state, requestMissingTicket = true, spawnMissingEntity = false, attempted = attempted)
         val expected = Set(state.uuid)
         if inventory.committedStates == List(state) && inventory.ticketUuids == expected && inventory.entityUuids == expected && inventory.managerUuids == expected then
           StartupPublicationDecision.Permit(List(state.uuid))
@@ -62,9 +92,7 @@ final class StartupReconciliation(inventory: StartupReconciliationInventory):
       else if inventory.ticketUuids.nonEmpty || inventory.entityUuids.nonEmpty || inventory.managerUuids.nonEmpty then
         StartupPublicationDecision.Block("runtime inventory is not empty before publication")
       else
-        inventory.requestTicket(state.uuid)
-        inventory.spawnEntity(state)
-        inventory.publishMapping(state)
+        recoverActive(state, requestMissingTicket = true, spawnMissingEntity = true, attempted = attempted)
         val expected = Set(state.uuid)
         if inventory.committedStates == List(state) && inventory.ticketUuids == expected && inventory.entityUuids == expected && inventory.managerUuids == expected then
           StartupPublicationDecision.Permit(List(state.uuid))
@@ -72,9 +100,9 @@ final class StartupReconciliation(inventory: StartupReconciliationInventory):
     else if committed.isEmpty then
       if inventory.ticketUuids.isEmpty && inventory.entityUuids.isEmpty && inventory.managerUuids.isEmpty then StartupPublicationDecision.Permit(Nil)
       else StartupPublicationDecision.Block("runtime inventory is not empty without committed state")
-    else reconcileMultipleCommitted(committed)
+    else reconcileMultipleCommitted(committed, attempted)
 
-  private def reconcileMultipleCommitted(committed: List[FloatingPodState]): StartupPublicationDecision =
+  private def reconcileMultipleCommitted(committed: List[FloatingPodState], attempted: ListBuffer[UUID]): StartupPublicationDecision =
     val committedUuids = committed.map(_.uuid).toSet
     val activeRows = committed.filter(_.isActive)
     val activeUuids = activeRows.map(_.uuid).toSet
@@ -91,9 +119,8 @@ final class StartupReconciliation(inventory: StartupReconciliationInventory):
     else
       val ordered = activeRows.sortBy(_.uuid.toString)
       ordered.foreach: state =>
-        if !inventory.ticketUuids.contains(state.uuid) then inventory.requestTicket(state.uuid)
-        if !inventory.entityUuids.contains(state.uuid) then inventory.spawnEntity(state)
-        inventory.publishMapping(state)
+        recoverActive(state, requestMissingTicket = !inventory.ticketUuids.contains(state.uuid),
+          spawnMissingEntity = !inventory.entityUuids.contains(state.uuid), attempted = attempted)
       val recoveredUuids = ordered.map(_.uuid)
       if inventory.committedStates == committed && inventory.ticketUuids == activeUuids && inventory.entityUuids == activeUuids && inventory.managerUuids == activeUuids then
         StartupPublicationDecision.Permit(recoveredUuids)
@@ -114,6 +141,20 @@ final class StartupReconciliation(inventory: StartupReconciliationInventory):
         StartupPublicationDecision.RemediationRequiresFreshBoot(state.uuid)
       else StartupPublicationDecision.Block("inactive remediation did not clear physical inventory")
 
+  private def recoverActive(state: FloatingPodState, requestMissingTicket: Boolean, spawnMissingEntity: Boolean, attempted: ListBuffer[UUID]): Unit =
+    inventory.beginStartupRecovery(state)
+    attempted += state.uuid
+    if requestMissingTicket then inventory.requestTicket(state.uuid)
+    if spawnMissingEntity then inventory.spawnEntity(state)
+    inventory.publishMapping(state)
+
+  private def rollbackStartupRecoveries(attempted: ListBuffer[UUID], primary: Throwable): Unit =
+    attempted.reverseIterator.foreach { podUuid =>
+      try inventory.abortStartupRecovery(podUuid)
+      catch
+        case cleanup: Throwable => if cleanup ne primary then primary.addSuppressed(cleanup)
+    }
+
 object StartupReconciliation:
   def forServer(repository: FloatingPodRepository, tickets: ChunkLoadingManager, manager: ActiveFloatingPodManager, worlds: ServerWorldResolver): StartupReconciliation =
     require(repository != null, "repository must not be null")
@@ -121,18 +162,42 @@ object StartupReconciliation:
     require(tickets != null, "tickets must not be null")
     require(manager != null, "manager must not be null")
     require(worlds != null, "worlds must not be null")
-    new StartupReconciliation(new ServerStartupReconciliationInventory(repository, tickets, manager, worlds))
+    new StartupReconciliation(new ServerStartupReconciliationInventory(() => repository.findAll().get, tickets, manager, worlds))
+
+  private[server] def forClaimedBoot(reads: MainBootProjection, tickets: ChunkLoadingManager,
+      manager: ActiveFloatingPodManager, worlds: ServerWorldResolver): StartupReconciliation =
+    reads.requireCurrentReads()
+    new StartupReconciliation(new ServerStartupReconciliationInventory(
+      () => reads.recoveryRows.map(_.toPublicState).toList, tickets, manager, worlds))
 
   private final class ServerStartupReconciliationInventory(
-      repository: FloatingPodRepository,
+      rows: () => List[FloatingPodState],
       tickets: ChunkLoadingManager,
       manager: ActiveFloatingPodManager,
       worlds: ServerWorldResolver
   ) extends StartupReconciliationInventory:
-    override def committedStates: List[FloatingPodState] = repository.findAll().get.sortBy(_.uuid.toString)
+    private val startupRecoveryReceipts = scala.collection.mutable.LinkedHashMap.empty[UUID, StartupRecoveryRollbackReceipt]
+    override def committedStates: List[FloatingPodState] = rows().sortBy(_.uuid.toString)
     override def ticketUuids: Set[UUID] = tickets.managedTicketRecords().keySet.toSet
     override def managerUuids: Set[UUID] = manager.getAllActivePods().toSet
     override val destructiveRemediationReady = false
+    override def beginStartupRecovery(active: FloatingPodState): Unit =
+      val state = currentActiveState(active)
+      val world = worldFor(state)
+      if startupRecoveryReceipts.contains(state.uuid) then throw new IllegalStateException(s"Startup recovery receipt already exists for ${state.uuid}")
+      startupRecoveryReceipts.put(state.uuid, manager.beginStartupRecovery(state, world))
+
+    override def completeStartupRecoveries(podUuids: List[UUID]): Unit =
+      if podUuids == null || podUuids.distinct.size != podUuids.size then throw new IllegalArgumentException("Startup recovery completion UUIDs must be distinct")
+      val receipts = podUuids.map(uuid => startupRecoveryReceipts.getOrElse(uuid, throw new IllegalStateException(s"Missing startup recovery receipt for $uuid")))
+      manager.completeStartupRecoveries(receipts)
+      podUuids.foreach(startupRecoveryReceipts.remove)
+
+    override def abortStartupRecovery(podUuid: UUID): Unit =
+      val receipt = startupRecoveryReceipts.getOrElse(podUuid, throw new IllegalStateException(s"Missing startup recovery receipt for $podUuid"))
+      try manager.abortStartupRecovery(receipt).get
+      finally startupRecoveryReceipts.remove(podUuid)
+
     override def entityUuids: Set[UUID] =
       committedStates.flatMap { state =>
         state.dimensionId.toList.flatMap { _ =>
@@ -149,12 +214,13 @@ object StartupReconciliation:
 
     override def spawnEntity(active: FloatingPodState): Unit =
       val state = currentActiveState(active)
-      val entity = worldFor(state).spawnPod(state)
-      if entity == null || entity.podUuid != state.uuid then throw new IllegalStateException(s"World did not spawn exact committed pod ${state.uuid}")
+      val receipt = startupRecoveryReceipts.getOrElse(state.uuid, throw new IllegalStateException(s"Missing startup recovery receipt for ${state.uuid}"))
+      manager.spawnStartupRecoveryEntity(state, receipt).get
 
     override def publishMapping(active: FloatingPodState): Unit =
       val state = currentActiveState(active)
-      manager.recoverCommittedActive(state, worldFor(state)).get
+      val receipt = startupRecoveryReceipts.getOrElse(state.uuid, throw new IllegalStateException(s"Missing startup recovery receipt for ${state.uuid}"))
+      manager.publishStartupRecovery(state, receipt).get
 
     override def removeEntity(podUuid: UUID): Unit =
       val state = exactState(podUuid)

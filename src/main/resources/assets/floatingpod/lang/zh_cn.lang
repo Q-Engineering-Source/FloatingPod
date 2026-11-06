@@ -1,0 +1,16 @@
+item.floatingpod.pod_debug_tool.name=FloatingPod 调试工具
+floatingpod.debug_tool.inspect=右键辅助机查看状态。
+floatingpod.debug_tool.toggle=潜行右键自己的辅助机，切换世界闲置模式。
+floatingpod.debug_tool.place=管理员可右键方块，创建待认领辅助机。
+floatingpod.debug_tool.pending=请求处理中；尚未确认提交。
+floatingpod.debug_tool.rejected=调试操作被拒绝。
+floatingpod.debug_tool.unavailable=FloatingPod 调试运行时尚不可用。
+floatingpod.debug_tool.faulted=调试操作失败，请查看服务端诊断。
+floatingpod.debug_tool.state=Pod：%s | 所有者：%s | 模式：%s | 活动：%s | 初始化/恢复：%s | 原因码：%s
+floatingpod.debug_tool.unclaimed=待认领
+floatingpod.recall.waiting=正在发送收回请求，等待服务器接纳。
+floatingpod.recall.processing=收回处理中，请勿重复提交。
+floatingpod.recall.committed=已确认收回。
+floatingpod.recall.refused=收回请求未获接纳，请检查目标状态。
+floatingpod.recall.retained_failure=收回结果仍待确认，请勿重复提交。
+floatingpod.recall.buffered=请稍候：结果回复后两秒内不能重复点击。

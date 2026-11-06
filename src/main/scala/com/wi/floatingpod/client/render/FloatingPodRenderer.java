@@ -96,30 +96,51 @@ public class FloatingPodRenderer extends Render<FloatingPodEntity>
      */
     @Override
     public void doRender(FloatingPodEntity entity, double x, double y, double z, float entityYaw, float partialTicks) {
+        ModelPose bloomPose;
         GlStateManager.pushMatrix();
-        GlStateManager.translate(x, y + VERTICAL_OFFSET, z);
-        GlStateManager.rotate(180.0F - entityYaw, 0.0F, 1.0F, 0.0F);
+        Throwable failure = null;
+        try {
+            GlStateManager.translate(x, y + VERTICAL_OFFSET, z);
+            GlStateManager.rotate(180.0F - entityYaw, 0.0F, 1.0F, 0.0F);
 
-        GeoModel model = modelProvider.getModel(modelProvider.getModelLocation(entity));
-        if (model == null) {
-            throw new IllegalStateException(
-                    "FloatingPod 模型未加载: " + modelProvider.getModelLocation(entity));
+            GeoModel model = modelProvider.getModel(modelProvider.getModelLocation(entity));
+            if (model == null) {
+                throw new IllegalStateException(
+                        "FloatingPod 模型未加载: " + modelProvider.getModelLocation(entity));
+            }
+            AnimationEvent<FloatingPodEntity> animationEvent = new AnimationEvent<>(
+                    entity, 0.0F, 0.0F, partialTicks, false, Collections.emptyList());
+            modelProvider.setLivingAnimations(entity, getUniqueID(entity), animationEvent);
+            bloomPose = bloomQueue == null ? null
+                    : ModelPose.capture(modelProvider.getAnimationProcessor().getModelRendererList());
+
+            bindEntityTexture(entity);
+            Color renderColor = getRenderColor(entity, partialTicks);
+            render(model, entity, partialTicks,
+                    renderColor.getRed() / COLOR_COMPONENT_MAX,
+                    renderColor.getGreen() / COLOR_COMPONENT_MAX,
+                    renderColor.getBlue() / COLOR_COMPONENT_MAX,
+                    renderColor.getAlpha() / COLOR_COMPONENT_MAX);
+        } catch (RuntimeException | Error renderFailure) {
+            failure = renderFailure;
+            throw renderFailure;
+        } finally {
+            try {
+                GlStateManager.popMatrix();
+            } catch (RuntimeException | Error cleanupFailure) {
+                if (failure == null) {
+                    failure = cleanupFailure;
+                } else if (failure != cleanupFailure) {
+                    failure.addSuppressed(cleanupFailure);
+                }
+            }
+            if (failure instanceof RuntimeException runtimeFailure) {
+                throw runtimeFailure;
+            }
+            if (failure instanceof Error errorFailure) {
+                throw errorFailure;
+            }
         }
-        AnimationEvent<FloatingPodEntity> animationEvent = new AnimationEvent<>(
-                entity, 0.0F, 0.0F, partialTicks, false, Collections.emptyList());
-        modelProvider.setLivingAnimations(entity, getUniqueID(entity), animationEvent);
-        ModelPose bloomPose = bloomQueue == null ? null
-                : ModelPose.capture(modelProvider.getAnimationProcessor().getModelRendererList());
-
-        bindEntityTexture(entity);
-        Color renderColor = getRenderColor(entity, partialTicks);
-        render(model, entity, partialTicks,
-                renderColor.getRed() / COLOR_COMPONENT_MAX,
-                renderColor.getGreen() / COLOR_COMPONENT_MAX,
-                renderColor.getBlue() / COLOR_COMPONENT_MAX,
-                renderColor.getAlpha() / COLOR_COMPONENT_MAX);
-
-        GlStateManager.popMatrix();
 
         enqueueBloom(entity, bloomPose, entityYaw, partialTicks);
 
@@ -209,25 +230,61 @@ public class FloatingPodRenderer extends Render<FloatingPodEntity>
         Color renderColor = getRenderColor(entity, request.partialTicks());
 
         GlStateManager.pushMatrix();
-        GlStateManager.translate(
-                request.worldX() - cameraX,
-                request.worldY() - cameraY + VERTICAL_OFFSET,
-                request.worldZ() - cameraZ);
-        GlStateManager.rotate(180.0F - request.entityYaw(), 0.0F, 1.0F, 0.0F);
+        Throwable failure = null;
+        try {
+            GlStateManager.translate(
+                    request.worldX() - cameraX,
+                    request.worldY() - cameraY + VERTICAL_OFFSET,
+                    request.worldZ() - cameraZ);
+            GlStateManager.rotate(180.0F - request.entityYaw(), 0.0F, 1.0F, 0.0F);
 
-        GlStateManager.disableCull();
-        GlStateManager.enableRescaleNormal();
-        try (EmissiveLightmapScope emissiveScope = new EmissiveLightmapScope()) {
-            drawPass(model,
-                    renderColor.getRed() / COLOR_COMPONENT_MAX,
-                    renderColor.getGreen() / COLOR_COMPONENT_MAX,
-                    renderColor.getBlue() / COLOR_COMPONENT_MAX,
-                    renderColor.getAlpha() / COLOR_COMPONENT_MAX,
-                    true);
+            GlStateManager.disableCull();
+            GlStateManager.enableRescaleNormal();
+            try (EmissiveLightmapScope emissiveScope = new EmissiveLightmapScope()) {
+                drawPass(model,
+                        renderColor.getRed() / COLOR_COMPONENT_MAX,
+                        renderColor.getGreen() / COLOR_COMPONENT_MAX,
+                        renderColor.getBlue() / COLOR_COMPONENT_MAX,
+                        renderColor.getAlpha() / COLOR_COMPONENT_MAX,
+                        true);
+            }
+        } catch (RuntimeException | Error renderFailure) {
+            failure = renderFailure;
+            throw renderFailure;
         } finally {
-            GlStateManager.disableRescaleNormal();
-            GlStateManager.enableCull();
-            GlStateManager.popMatrix();
+            try {
+                GlStateManager.disableRescaleNormal();
+            } catch (RuntimeException | Error cleanupFailure) {
+                if (failure == null) {
+                    failure = cleanupFailure;
+                } else if (failure != cleanupFailure) {
+                    failure.addSuppressed(cleanupFailure);
+                }
+            }
+            try {
+                GlStateManager.enableCull();
+            } catch (RuntimeException | Error cleanupFailure) {
+                if (failure == null) {
+                    failure = cleanupFailure;
+                } else if (failure != cleanupFailure) {
+                    failure.addSuppressed(cleanupFailure);
+                }
+            }
+            try {
+                GlStateManager.popMatrix();
+            } catch (RuntimeException | Error cleanupFailure) {
+                if (failure == null) {
+                    failure = cleanupFailure;
+                } else if (failure != cleanupFailure) {
+                    failure.addSuppressed(cleanupFailure);
+                }
+            }
+            if (failure instanceof RuntimeException runtimeFailure) {
+                throw runtimeFailure;
+            }
+            if (failure instanceof Error errorFailure) {
+                throw errorFailure;
+            }
         }
     }
 
@@ -256,21 +313,50 @@ public class FloatingPodRenderer extends Render<FloatingPodEntity>
     @Override
     public void render(GeoModel model, FloatingPodEntity animatable, float partialTicks,
                        float red, float green, float blue, float alpha) {
-        GlStateManager.disableCull();
-        GlStateManager.enableRescaleNormal();
+        Throwable failure = null;
+        try {
+            GlStateManager.disableCull();
+            GlStateManager.enableRescaleNormal();
 
-        renderEarly(animatable, partialTicks, red, green, blue, alpha);
-        renderLate(animatable, partialTicks, red, green, blue, alpha);
+            renderEarly(animatable, partialTicks, red, green, blue, alpha);
+            renderLate(animatable, partialTicks, red, green, blue, alpha);
 
-        drawPass(model, red, green, blue, alpha, false);
+            drawPass(model, red, green, blue, alpha, false);
 
-        try (EmissiveLightmapScope emissiveScope = new EmissiveLightmapScope()) {
-            drawPass(model, red, green, blue, alpha, true);
+            try (EmissiveLightmapScope emissiveScope = new EmissiveLightmapScope()) {
+                drawPass(model, red, green, blue, alpha, true);
+            }
+
+            renderAfter(animatable, partialTicks, red, green, blue, alpha);
+        } catch (RuntimeException | Error renderFailure) {
+            failure = renderFailure;
+            throw renderFailure;
+        } finally {
+            try {
+                GlStateManager.disableRescaleNormal();
+            } catch (RuntimeException | Error cleanupFailure) {
+                if (failure == null) {
+                    failure = cleanupFailure;
+                } else if (failure != cleanupFailure) {
+                    failure.addSuppressed(cleanupFailure);
+                }
+            }
+            try {
+                GlStateManager.enableCull();
+            } catch (RuntimeException | Error cleanupFailure) {
+                if (failure == null) {
+                    failure = cleanupFailure;
+                } else if (failure != cleanupFailure) {
+                    failure.addSuppressed(cleanupFailure);
+                }
+            }
+            if (failure instanceof RuntimeException runtimeFailure) {
+                throw runtimeFailure;
+            }
+            if (failure instanceof Error errorFailure) {
+                throw errorFailure;
+            }
         }
-
-        renderAfter(animatable, partialTicks, red, green, blue, alpha);
-        GlStateManager.disableRescaleNormal();
-        GlStateManager.enableCull();
     }
 
     /**

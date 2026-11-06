@@ -283,7 +283,17 @@ class StartupReconciliationTest:
     assertTrue(inventory.entityUuids.isEmpty)
     assertTrue(inventory.managerUuids.isEmpty)
 
-  private final class CompleteInventory(state: FloatingPodState) extends StartupReconciliationInventory:
+  private trait ReceiptInventory extends StartupReconciliationInventory:
+    private val pendingReceipts = scala.collection.mutable.HashSet.empty[UUID]
+    override def beginStartupRecovery(active: FloatingPodState): Unit =
+      require(active != null && pendingReceipts.add(active.uuid), s"startup receipt already exists for ${active.uuid}")
+    override def completeStartupRecoveries(podUuids: List[UUID]): Unit =
+      require(podUuids != null && podUuids.distinct.size == podUuids.size && podUuids.forall(pendingReceipts.contains), "startup completion must name exact open receipts")
+      podUuids.foreach(pendingReceipts.remove)
+    override def abortStartupRecovery(podUuid: UUID): Unit =
+      require(podUuid != null && pendingReceipts.remove(podUuid), s"startup receipt is not open for $podUuid")
+
+  private final class CompleteInventory(state: FloatingPodState) extends ReceiptInventory:
     val events = ListBuffer.empty[String]
     var databaseWriteAttempts = 0
     private var tickets = Set.empty[UUID]
@@ -306,7 +316,7 @@ class StartupReconciliationTest:
     override def removeEntity(podUuid: UUID): Unit = throw new AssertionError("active publication must not remove an entity")
     override def releaseTicket(podUuid: UUID): Unit = throw new AssertionError("active publication must not release a ticket")
 
-  private final class InactiveInventory(state: FloatingPodState) extends StartupReconciliationInventory:
+  private final class InactiveInventory(state: FloatingPodState) extends ReceiptInventory:
     val events = ListBuffer.empty[String]
     var databaseWriteAttempts = 0
     private var tickets = Set(state.uuid)
@@ -326,7 +336,7 @@ class StartupReconciliationTest:
       events += s"release:$podUuid"
       tickets -= podUuid
 
-  private final class AttachedPhysicalInventory(state: FloatingPodState) extends StartupReconciliationInventory:
+  private final class AttachedPhysicalInventory(state: FloatingPodState) extends ReceiptInventory:
     val events = ListBuffer.empty[String]
     var databaseWriteAttempts = 0
     private var mappings = Set.empty[UUID]
@@ -343,7 +353,7 @@ class StartupReconciliationTest:
     override def removeEntity(podUuid: UUID): Unit = throw new AssertionError("active publication must not remove an entity")
     override def releaseTicket(podUuid: UUID): Unit = throw new AssertionError("active publication must not release a ticket")
 
-  private final class TicketOnlyInventory(state: FloatingPodState) extends StartupReconciliationInventory:
+  private final class TicketOnlyInventory(state: FloatingPodState) extends ReceiptInventory:
     val events = ListBuffer.empty[String]
     var databaseWriteAttempts = 0
     private var entities = Set.empty[UUID]
@@ -363,7 +373,7 @@ class StartupReconciliationTest:
     override def removeEntity(podUuid: UUID): Unit = throw new AssertionError("active publication must not remove an entity")
     override def releaseTicket(podUuid: UUID): Unit = throw new AssertionError("active publication must not release a ticket")
 
-  private final class EntityOnlyInventory(state: FloatingPodState) extends StartupReconciliationInventory:
+  private final class EntityOnlyInventory(state: FloatingPodState) extends ReceiptInventory:
     val events = ListBuffer.empty[String]
     var databaseWriteAttempts = 0
     private var tickets = Set.empty[UUID]
@@ -383,7 +393,7 @@ class StartupReconciliationTest:
     override def removeEntity(podUuid: UUID): Unit = throw new AssertionError("active publication must not remove an entity")
     override def releaseTicket(podUuid: UUID): Unit = throw new AssertionError("active publication must not release a ticket")
 
-  private final class MultipleActiveRowsInventory(states: List[FloatingPodState]) extends StartupReconciliationInventory:
+  private final class MultipleActiveRowsInventory(states: List[FloatingPodState]) extends ReceiptInventory:
     val events = ListBuffer.empty[String]
     var databaseWriteAttempts = 0
     private var tickets = Set.empty[UUID]
@@ -406,7 +416,7 @@ class StartupReconciliationTest:
     override def removeEntity(podUuid: UUID): Unit = throw new AssertionError("active publication must not remove an entity")
     override def releaseTicket(podUuid: UUID): Unit = throw new AssertionError("active publication must not release a ticket")
 
-  private final class EmptyCommittedInventory extends StartupReconciliationInventory:
+  private final class EmptyCommittedInventory extends ReceiptInventory:
     val events = ListBuffer.empty[String]
     var databaseWriteAttempts = 0
 
@@ -420,7 +430,7 @@ class StartupReconciliationTest:
     override def removeEntity(podUuid: UUID): Unit = events += "remove"
     override def releaseTicket(podUuid: UUID): Unit = events += "release"
 
-  private final class FreshBootInactiveInventory(state: FloatingPodState) extends StartupReconciliationInventory:
+  private final class FreshBootInactiveInventory(state: FloatingPodState) extends ReceiptInventory:
     val events = ListBuffer.empty[String]
     var databaseWriteAttempts = 0
 

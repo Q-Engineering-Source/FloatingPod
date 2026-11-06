@@ -13,6 +13,32 @@ import java.util.UUID
 /** 验证协议值在 Forge ByteBuf 边界上的首个可互通 tracer。 */
 class PacketSerializationTest:
   @Test
+  def busyRoundTripsAsUnacceptedWithoutVersionAndOldProtocolIsRejected(): Unit =
+    val id = UUID.randomUUID()
+    val release = Unpooled.buffer()
+    val recall = Unpooled.buffer()
+    try
+      S2CReleaseResult.failed(id, ReleaseFailureReason.Busy).toBytes(release)
+      S2CRecallResult.failed(id, RecallFailureReason.Busy).toBytes(recall)
+      val decodedRelease = new S2CReleaseResult()
+      val decodedRecall = new S2CRecallResult()
+      decodedRelease.fromBytes(release.duplicate())
+      decodedRecall.fromBytes(recall.duplicate())
+      assertEquals(false, decodedRelease.success)
+      assertEquals(false, decodedRecall.success)
+      assertEquals(None, decodedRelease.newStateVersion)
+      assertEquals(None, decodedRecall.newStateVersion)
+      assertEquals(Some(ReleaseFailureReason.Busy), decodedRelease.reason)
+      assertEquals(Some(RecallFailureReason.Busy), decodedRecall.reason)
+      release.setByte(0, 1)
+      recall.setByte(0, 1)
+      assertThrows(classOf[IllegalArgumentException], () => new S2CReleaseResult().fromBytes(release))
+      assertThrows(classOf[IllegalArgumentException], () => new S2CRecallResult().fromBytes(recall))
+    finally
+      release.release()
+      recall.release()
+
+  @Test
   def releaseRequestRoundTripsUuidPackedPositionAndExpectedVersion(): Unit =
     val expectedUuid = UUID.fromString("00000000-0000-0000-0000-000000000123")
     val expectedPosition = new BlockPos(12, 64, -8)
@@ -99,8 +125,8 @@ class PacketSerializationTest:
   @Test
   def decodersRejectProtocolMismatchesTruncationAndTrailingPayload(): Unit =
     val uuid = UUID.fromString("00000000-0000-0000-0000-000000000128")
-    val mismatch = Unpooled.buffer().writeByte(2)
-    val truncated = Unpooled.buffer().writeByte(1).writeLong(uuid.getMostSignificantBits)
+    val mismatch = Unpooled.buffer().writeByte(1)
+    val truncated = Unpooled.buffer().writeByte(PacketHandler.PROTOCOL_VERSION).writeLong(uuid.getMostSignificantBits)
     val trailing = Unpooled.buffer()
     new C2SRecallRequest(uuid, 12L).toBytes(trailing)
     trailing.writeByte(0)
@@ -113,7 +139,7 @@ class PacketSerializationTest:
   def resultCodecsRejectInconsistentOptionalShapesAndUnknownReasons(): Unit =
     val uuid = UUID.fromString("00000000-0000-0000-0000-000000000129")
     val malformed = Unpooled.buffer()
-    malformed.writeByte(1)
+    malformed.writeByte(PacketHandler.PROTOCOL_VERSION)
     malformed.writeBoolean(false)
     malformed.writeLong(uuid.getMostSignificantBits)
     malformed.writeLong(uuid.getLeastSignificantBits)
@@ -168,7 +194,7 @@ class PacketSerializationTest:
     )
 
     decoders.foreach(decoder => {
-      assertThrows(classOf[RuntimeException], () => decoder(Unpooled.buffer().writeByte(2)))
+      assertThrows(classOf[RuntimeException], () => decoder(Unpooled.buffer().writeByte(1)))
       assertThrows(classOf[RuntimeException], () => decoder(Unpooled.buffer().writeByte(PacketHandler.PROTOCOL_VERSION)))
     })
     decoders.zip(validPayloads).foreach { case (decoder, payload) =>

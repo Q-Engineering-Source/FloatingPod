@@ -6,7 +6,7 @@ import java.util.UUID
 
 /** 集中协议字段的固定编码，让每个封包以相同方式拒绝不兼容或残留数据。 */
 private[network] object ProtocolCodec:
-  /** 第一版封包 payload 的固定协议版本。 */
+  /** 当前封包payload版本；v2新增Busy拒绝，旧客户端不能误解为已接受处理中。 */
   final val Version: Int = PacketHandler.PROTOCOL_VERSION
 
   /** 写入每个 payload 必须具备的协议版本前缀。 */
