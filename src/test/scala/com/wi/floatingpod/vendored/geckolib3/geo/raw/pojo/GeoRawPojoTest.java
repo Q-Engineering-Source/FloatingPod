@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Set;
 
 import com.google.gson.Gson;
+import com.wi.floatingpod.client.render.FloatingPodModel;
 import com.google.gson.JsonParseException;
 import com.wi.floatingpod.vendored.geckolib3.core.builder.Animation;
 import com.wi.floatingpod.vendored.geckolib3.core.builder.ILoopType.EDefaultLoopTypes;
@@ -37,10 +38,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class GeoRawPojoTest {
 	/** 用于端到端反序列化的正式 geo 资源。 */
-	private static final String GEO_RESOURCE = "assets/floatingpod/geo/general_purpose_support_drone_001.geo.json";
+	private static final String GEO_RESOURCE = "assets/floatingpod/geo/assembly/core/pod_core_v0_00_01.geo.json";
 	/** 用于端到端动画解析的正式动画资源。 */
 	private static final String ANIMATION_RESOURCE =
-			"assets/floatingpod/animations/general_purpose_support_drone_001.animation.json";
+			"assets/floatingpod/animations/assembly/core/pod_core_v0_00_01.animation.json";
 
 	/**
 	 * 验证真实 geo 资源会保留骨骼、立方体和逐面 UV 数据。
@@ -57,20 +58,20 @@ class GeoRawPojoTest {
 
 		MinecraftGeometry geometry = rawGeoModel.getMinecraftGeometry()[0];
 		assertNotNull(geometry.getBones());
-		assertEquals(42, geometry.getBones().length);
-		assertEquals(106, countCubes(geometry.getBones()));
+		assertEquals(8, geometry.getBones().length);
+		assertEquals(7, countCubes(geometry.getBones()));
 
-		Cube firstCube = geometry.getBones()[0].getCubes()[0];
+		Cube firstCube = geometry.getBones()[1].getCubes()[0];
 		assertNotNull(firstCube.getUv());
 		assertFalse(firstCube.getUv().isBoxUV);
 		assertNotNull(firstCube.getUv().faceUV);
 		assertNotNull(firstCube.getUv().faceUV.getNorth());
-		assertArrayEquals(new double[] { 0.0D, 13.0D }, firstCube.getUv().faceUV.getNorth().getUv());
+		assertArrayEquals(new double[] { 0.0D, 0.0D }, firstCube.getUv().faceUV.getNorth().getUv());
 		assertArrayEquals(new double[] { 6.0D, 6.0D }, firstCube.getUv().faceUV.getNorth().getUvSize());
 
 		RawGeoModel roundTripped = Converter.fromJsonString(Converter.toJsonString(rawGeoModel));
-		assertEquals(42, roundTripped.getMinecraftGeometry()[0].getBones().length);
-		assertEquals(106, countCubes(roundTripped.getMinecraftGeometry()[0].getBones()));
+		assertEquals(8, roundTripped.getMinecraftGeometry()[0].getBones().length);
+		assertEquals(7, countCubes(roundTripped.getMinecraftGeometry()[0].getBones()));
 	}
 
 	/**
@@ -80,32 +81,28 @@ class GeoRawPojoTest {
 	 */
 	@Test
 	void loadsDroneGeoAssetThroughGeoModelLoader() throws IOException {
-		ResourceLocation location = new ResourceLocation(
-				"floatingpod", "geo/general_purpose_support_drone_001.geo.json");
+		ResourceLocation location = new FloatingPodModel().getModelLocation(null);
 		GeoModel model = new GeoModelLoader().loadModel(resourceManagerFor(GEO_RESOURCE), location);
 
-		assertEquals(42, countBuiltBones(model.topLevelBones));
-		assertEquals(106, countBuiltCubes(model.topLevelBones));
+		assertEquals(8, countBuiltBones(model.topLevelBones));
+		assertEquals(7, countBuiltCubes(model.topLevelBones));
 		assertNotNull(model.getBone("main").orElseThrow());
 	}
 
 	/**
-	 * 验证动画文件加载器保留四段动画、循环和保持最后一帧的语义。
+	 * 验证核心动画文件加载器保留 off 与 idle 的循环和时长。
 	 *
 	 * @throws IOException 测试资源不可读时失败
 	 */
 	@Test
 	void loadsDroneAnimationsWithLoopSemantics() throws IOException, MolangException {
-		ResourceLocation location = new ResourceLocation(
-				"floatingpod", "animations/general_purpose_support_drone_001.animation.json");
+		ResourceLocation location = new FloatingPodModel().getAnimationFileLocation(null);
 		AnimationFile animationFile = new AnimationFileLoader().loadAllAnimations(
 				new MolangParser(), location, resourceManagerFor(ANIMATION_RESOURCE));
 
-		assertEquals(4, animationFile.getAllAnimations().size());
+		assertEquals(2, animationFile.getAllAnimations().size());
+		assertAnimation(animationFile.getAnimation("off"), EDefaultLoopTypes.LOOP, 20.0D);
 		assertAnimation(animationFile.getAnimation("idle"), EDefaultLoopTypes.LOOP, 40.0D);
-		assertAnimation(animationFile.getAnimation("Weapon_on"), EDefaultLoopTypes.HOLD_ON_LAST_FRAME, 20.0D);
-		assertAnimation(animationFile.getAnimation("Weapon_on_idle"), EDefaultLoopTypes.LOOP, 20.0D);
-		assertAnimation(animationFile.getAnimation("Weapon_off"), EDefaultLoopTypes.HOLD_ON_LAST_FRAME, 20.0D);
 	}
 
 	/**

@@ -1,0 +1,116 @@
+{
+	"format_version": "1.8.0",
+	"animations": {
+		"Weapon_on": {
+			"loop": "hold_on_last_frame",
+			"animation_length": 1,
+			"bones": {
+				"shell": {
+					"position": {
+						"0.0": {
+							"vector": [0, 0, 0]
+						},
+						"0.5": {
+							"vector": [0, 4, 0]
+						}
+					}
+				},
+				"door_R_Y": {
+					"rotation": {
+						"0.0": {
+							"vector": [0, 0, 0]
+						},
+						"0.25": {
+							"vector": [0, 90, 0]
+						},
+						"0.75": {
+							"vector": [0, 90, 0]
+						},
+						"1.0": {
+							"vector": [0, 0, 0]
+						}
+					}
+				},
+				"weapon_R_X": {
+					"rotation": {
+						"0.25": {
+							"vector": [0, 0, 0]
+						},
+						"0.75": {
+							"vector": [90, 0, 0]
+						}
+					}
+				}
+			}
+		},
+		"Weapon_on_idle": {
+			"loop": true,
+			"animation_length": 1,
+			"bones": {
+				"shell": {
+					"position": {
+						"0.0": {
+							"vector": [0, 4, 0]
+						},
+						"0.5": {
+							"vector": [0, 4, 0]
+						}
+					}
+				},
+				"weapon_R_X": {
+					"rotation": {
+						"0.0": {
+							"vector": [90, 0, 0]
+						},
+						"0.5": {
+							"vector": [90, 0, 0]
+						}
+					}
+				}
+			}
+		},
+		"Weapon_off": {
+			"loop": "hold_on_last_frame",
+			"animation_length": 1,
+			"bones": {
+				"shell": {
+					"position": {
+						"0.5": {
+							"vector": [0, 4, 0]
+						},
+						"1.0": {
+							"vector": [0, 0, 0]
+						}
+					}
+				},
+				"weapon_R_X": {
+					"rotation": {
+						"0.25": {
+							"vector": [90, 0, 0]
+						},
+						"0.75": {
+							"vector": [0, 0, 0]
+						}
+					}
+				},
+				"door_R_Y": {
+					"rotation": {
+						"0.0": {
+							"vector": [0, 0, 0]
+						},
+						"0.25": {
+							"vector": [0, 90, 0]
+						},
+						"0.75": {
+							"vector": [0, 90, 0]
+						},
+						"1.0": {
+							"vector": [0, 0, 0]
+						}
+					}
+				}
+			}
+		}
+	},
+	"geckolib_format_version": 2
+}

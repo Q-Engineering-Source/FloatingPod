@@ -18,15 +18,15 @@ public class FloatingPodModel extends AnimatedGeoModel<FloatingPodEntity> {
 
     /** 模型几何文件位置，对应 Blockbench 导出的 {@code .geo.json}。 */
     private static final ResourceLocation MODEL_LOCATION =
-            new ResourceLocation(FloatingPod.MOD_ID, "geo/general_purpose_support_drone_001.geo.json");
+            new ResourceLocation(FloatingPod.MOD_ID, "geo/assembly/core/pod_core_v0_00_01.geo.json");
 
     /** 贴图位置。贴图为二进制资源，已由 {@code .gitattributes} 标记为 {@code -text}。 */
     private static final ResourceLocation TEXTURE_LOCATION =
-            new ResourceLocation(FloatingPod.MOD_ID, "textures/entity/general_purpose_support_drone_001.png");
+            new ResourceLocation(FloatingPod.MOD_ID, "textures/entity/assembly/core/pod_core_v0_00_01.png");
 
     /** 动画文件位置，其内动画键必须与实体侧使用的动画名一致。 */
     private static final ResourceLocation ANIMATION_LOCATION =
-            new ResourceLocation(FloatingPod.MOD_ID, "animations/general_purpose_support_drone_001.animation.json");
+            new ResourceLocation(FloatingPod.MOD_ID, "animations/assembly/core/pod_core_v0_00_01.animation.json");
 
     /**
      * 提供模型几何资源位置。

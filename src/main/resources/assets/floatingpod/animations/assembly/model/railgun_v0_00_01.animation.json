@@ -1,0 +1,40 @@
+{
+	"format_version": "1.8.0",
+	"animations": {
+		"animation.model.new": {
+			"loop": true,
+			"animation_length": 1,
+			"bones": {
+				"bone16": {
+					"position": {
+						"0.5625": {
+							"vector": [0, 0, 0]
+						},
+						"0.6875": {
+							"vector": [0, 0, 4],
+							"easing": "easeInBounce"
+						},
+						"0.8125": {
+							"vector": [0, 0, 0]
+						}
+					}
+				},
+				"launch_tube": {
+					"position": {
+						"0.5": {
+							"vector": [0, 0, 0]
+						},
+						"0.5625": {
+							"vector": [0, 2, 0],
+							"easing": "easeInCirc"
+						},
+						"0.8125": {
+							"vector": [0, 0, 0]
+						}
+					}
+				}
+			}
+		}
+	},
+	"geckolib_format_version": 2
+}

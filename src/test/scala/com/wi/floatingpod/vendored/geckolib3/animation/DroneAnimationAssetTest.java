@@ -26,10 +26,10 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  */
 class DroneAnimationAssetTest {
 	/** 用于端到端动画解析的正式资源。 */
-	private static final String ANIMATION_RESOURCE = "assets/floatingpod/animations/general_purpose_support_drone_001.animation.json";
+	private static final String ANIMATION_RESOURCE = "assets/floatingpod/animations/assembly/core/pod_core_v0_00_01.animation.json";
 
 	/**
-	 * 验证四段动画均经 JsonAnimationUtils 解析为正确的循环、时长和缓动配置。
+	 * 验证核心 off 与 idle 经 JsonAnimationUtils 解析为正确的循环、时长和缓动配置。
 	 *
 	 * @throws IOException 资源读取不应失败
 	 */
@@ -37,14 +37,12 @@ class DroneAnimationAssetTest {
 	void parsesDroneAnimationAssetWithLoopLengthAndEasing() throws IOException, MolangException {
 		Map<String, Animation> animations = parseAnimations(readResource(ANIMATION_RESOURCE));
 
-		assertEquals(4, animations.size());
+		assertEquals(2, animations.size());
 		assertAnimation(animations.get("idle"), 40.0D, EDefaultLoopTypes.LOOP);
-		assertAnimation(animations.get("Weapon_on"), 20.0D, EDefaultLoopTypes.HOLD_ON_LAST_FRAME);
-		assertAnimation(animations.get("Weapon_on_idle"), 20.0D, EDefaultLoopTypes.LOOP);
-		assertAnimation(animations.get("Weapon_off"), 20.0D, EDefaultLoopTypes.HOLD_ON_LAST_FRAME);
+		assertAnimation(animations.get("off"), 20.0D, EDefaultLoopTypes.LOOP);
 
-		BoneAnimation doorAnimation = findBoneAnimation(animations.get("Weapon_on"), "door_R_Y");
-		assertEquals(EasingType.EaseOutQuad, doorAnimation.rotationKeyFrames.yKeyFrames.get(1).easingType);
+		BoneAnimation mainAnimation = findBoneAnimation(animations.get("idle"), "main");
+		assertEquals(EasingType.EaseInOutQuad, mainAnimation.positionKeyFrames.yKeyFrames.get(1).easingType);
 	}
 
 	/**

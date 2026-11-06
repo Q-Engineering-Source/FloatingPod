@@ -44,7 +44,7 @@ public class FloatingPodEntity extends Entity implements IAnimatable {
     private static final String ANIMATION_CONTROLLER_NAME = "floatingpod_main_controller";
 
     /**
-     * 待机动画名称，必须与 {@code animations/general_purpose_support_drone_001.animation.json}
+     * 待机动画名称，必须与 {@code animations/assembly/core/pod_core_v0_00_01.animation.json}
      * 中的动画键完全一致；不一致时 GeckoLib 会在客户端报告找不到该动画。
      */
     private static final String IDLE_ANIMATION_NAME = "idle";

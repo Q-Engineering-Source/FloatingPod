@@ -53,9 +53,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @TestMethodOrder(OrderAnnotation.class)
 public class GeckoLibCacheTest {
 	private static final ResourceLocation MODEL_LOCATION = new ResourceLocation("floatingpod",
-			"geo/general_purpose_support_drone_001.geo.json");
+			"geo/assembly/core/pod_core_v0_00_01.geo.json");
 	private static final ResourceLocation ANIMATION_LOCATION = new ResourceLocation("floatingpod",
-			"animations/general_purpose_support_drone_001.animation.json");
+			"animations/assembly/core/pod_core_v0_00_01.animation.json");
 	private boolean previousInitialized;
 
 	@BeforeEach
